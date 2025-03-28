@@ -1,3 +1,4 @@
 Install poetry : curl -sSL https://install.python-poetry.org | python3 -
 Set version of virtual environment : poetry env use python3.9
 Go into the virtual environment : eval $(poetry env activate)
+To add a dependency (e.g. tensorflow) : poetry add tensorflow 
