@@ -14,6 +14,7 @@ We work on the reference *dataset* for small-footprint keyword spotting:
 - released in August 2017
 - released under creative commons 4.0 license
 - collected by [AIY](https://aiyprojects.withgoogle.com/)
+
 (You can download it at this [link](http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz))
 
 Such dataset contains *65,000* one-second-long utterances of *30 words* by thousands of different people.
