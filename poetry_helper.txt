@@ -5,3 +5,10 @@ Go into the virtual environment : eval $(poetry env activate)
   3a) Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
   3b) Invoke-Expression (poetry env activate) ]
 To add a dependency (e.g. tensorflow) : poetry add tensorflow
+
+
+# Use this to create virtual environment : 
+
+poetry config virtualenvs.in-project true
+poetry install
+
