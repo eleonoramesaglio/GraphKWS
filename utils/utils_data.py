@@ -3,9 +3,73 @@ import os
 import pathlib 
 import numpy as np 
 import matplotlib.pyplot as plt
+import pandas as pd 
+import random 
 
 
-def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32, sample_rate=16000, duration=1.0):
+
+### HELPER FUNCTIONS
+
+def idx_to_label_conversion(idx, class_to_index):
+    """
+    Convert index to label using the class_to_index mapping.
+    
+    Args:
+        idx: Index of the class
+        class_to_index: Mapping of class names to indices
+    Returns:
+        label: Corresponding class name
+    """ 
+    # Create mapping from index to class name for lookup of class name
+    index_to_class = {v: k for k, v in class_to_index.items()}
+    
+    # Get the label using the index
+    label = index_to_class[idx]
+    
+    return label
+
+
+def label_to_idx_conversion(label, class_to_index):
+    """
+    Convert label to index using the class_to_index mapping.
+    
+    Args:
+        label: Class name
+        class_to_index: Mapping of class names to indices
+    Returns:
+        idx: Corresponding index of the class
+    """ 
+    # Get the index using the label
+    idx = class_to_index[label]
+    
+    return idx
+
+
+def read_path_to_wav(file_path):
+    """
+    Read the audio file and return its contents.
+    
+    Args:
+        file_path: Path to the audio file
+    Returns:
+        wav: Waveform of the audio file
+        sample_rate: Sample rate of the audio file
+    """
+
+    # Load audio file
+    file_contents = tf.io.read_file(file_path)
+
+    wav, sample_rate = tf.audio.decode_wav(file_contents)
+    
+    return wav, sample_rate
+
+
+
+
+### MAIN FUNCTIONS 
+
+
+def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     """
     Load audio datasets with predefined splits from text files.
     
@@ -56,76 +120,160 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32, samp
             if rel_path in test_files:
                 test_files_list.append(str(audio_file))
                 test_labels.append(class_idx)
+            
             elif rel_path in val_files:
                 val_files_list.append(str(audio_file))
                 val_labels.append(class_idx)
+    
             else:
                 train_files.append(str(audio_file))
                 train_labels.append(class_idx)
-    
-
-    # Function to load and preprocess audio
-    def preprocess_audio(file_path, label):
-        # Load audio file
-        file_contents = tf.io.read_file(file_path)
-        # Decode wav (returns waveform and sample rate)
-        wav, sample_rate = tf.audio.decode_wav(file_contents)
-       
-   
-        # Since not all audio samples have the same length, we need to
-        # ensure they have the same length (for batching) by padding shorter/
-        # trimming longer audio files
-        # Standardize length to 16000 samples (1 second at 16kHz)
-        target_length = 16000
-        
-        # Get current length
-        
-        current_length = tf.shape(wav)[0]
-        
-        # Handle different lengths
-        if current_length > target_length:
-            # Trim to target length
-            wav = wav[:target_length]
-        else:
-            # Pad with zeros to reach target length
-            paddings = [[0, target_length - current_length], [0, 0]]
-            wav = tf.pad(wav, paddings)
+             
 
 
-        # Finally, squeeze the wav (i.e. remove the channel dimension (we have one channel))
 
-        wav = tf.squeeze(wav, axis = -1)
-        
-        return wav, label
+    return train_files, train_labels, val_files_list, val_labels, test_files_list, test_labels, class_to_index
 
     
+
+
+def create_tf_dataset(path_files, labels, batch_size = 32, mode = 'train'):
+    """
+    Create a TensorFlow dataset from the audio files and labels.
+    Args:
+        path_files: List of audio file paths
+        labels: List of corresponding labels
+        batch_size: Batch size for the dataset
+        mode: Mode of the dataset ('train', 'val', or 'test')
+    Returns:
+        dataset: TensorFlow dataset"""
+
     # Create datasets
-    train_ds = tf.data.Dataset.from_tensor_slices((train_files, train_labels))
-    train_ds = train_ds.shuffle(buffer_size = len(train_ds))
-    train_ds = train_ds.map(preprocess_audio, num_parallel_calls=tf.data.AUTOTUNE)
-    train_ds = train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    ds = tf.data.Dataset.from_tensor_slices((path_files, labels))
+    # Shuffle if train
+    if mode == 'train':
+        ds = ds.shuffle(buffer_size=len(ds))
+ 
+    ds = ds.map(preprocess_audio, num_parallel_calls=tf.data.AUTOTUNE)
+    ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     
-    val_ds = tf.data.Dataset.from_tensor_slices((val_files_list, val_labels))
-    val_ds = val_ds.map(preprocess_audio, num_parallel_calls=tf.data.AUTOTUNE)
-    val_ds = val_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    return ds
+
+
+
+
+def preprocess_audio(file_path, label):
+    # Load audio file
+    file_contents = tf.io.read_file(file_path)
+    # Decode wav (returns waveform and sample rate)
+    wav, sample_rate = tf.audio.decode_wav(file_contents)
     
-    test_ds = tf.data.Dataset.from_tensor_slices((test_files_list, test_labels))
-    test_ds = test_ds.map(preprocess_audio, num_parallel_calls=tf.data.AUTOTUNE)
-    test_ds = test_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
+    # Since not all audio samples have the same length, we need to
+    # ensure they have the same length (for batching) by padding shorter/
+    # trimming longer audio files
+    # Standardize length to 16000 samples (1 second at 16kHz)
 
+    target_length = 16000
     
-    return train_ds, val_ds, test_ds, class_to_index
+    # Get current length
+    current_length = tf.shape(wav)[0]
+    
+    # Handle different lengths
+    if current_length > target_length:
+        # Trim to target length
+        wav = wav[:target_length]
+    else:
+        # Pad with zeros to reach target length
+        paddings = [[0, target_length - current_length], [0, 0]]
+        wav = tf.pad(wav, paddings)
 
 
-def visualize_waveforms(wavs, labels, class_to_index):
+    # Finally, squeeze the wav (i.e. remove the channel dimension (we have one channel))
+    wav = tf.squeeze(wav, axis = -1)
+    
+    return wav, label
+
+
+
+def get_spectrogram(wav, sample_rate = 16000):
+  # Taken partly from : https://www.tensorflow.org/tutorials/audio/simple_audio
+
+
+    # Convert the waveform to a spectrogram via a STFT.
+
+    # fft_length : defines that x-point STFT. Higher values give finer frequencies,
+    # but more calculations
+    # frame_length : define the length of the frame  ; we'll use 25 ms due to it
+    # being the standard value , therefore, since the sample rate is 16000kHz, we
+    # have 16.000 samples/second * 0.025s = 400 samples.
+    # frame_step : defines the overlap of frames that we have. We take the standard
+    # value of 10 ms --> 16.000 samples/second * 0.010s = 160 samples.
+
+
+    frame_length = int(sample_rate * 0.025)  # 25 ms # like in lecture
+    frame_step = int(sample_rate * 0.010)  # 10 ms # like in lecture 
+
+
+    # TODO : what fft_length ? check : https://www.coursera.org/lecture/audio-signal-processing/stft-2-tjEQe
+    spectrogram = tf.signal.stft(wav, frame_length= frame_length, frame_step= frame_step, fft_length= 1024,
+                        window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture
+    # Obtain the magnitude of the STFT.
+    spectrogram = tf.abs(spectrogram)
+
+
+    return spectrogram, frame_step
+
+
+
+### VISUALIZATION FUNCTIONS
+
+
+
+def visualize_single_waveform(wav, label):
+    """
+    Visualize a single waveform.
+
+    Args:
+        wav : waveform file
+        label : waveform label
+    
+    """
+    plt.figure(figsize=(20, 4))
+    
+    # Extract and plot audio data
+    audio_signal = wav.numpy().flatten()  # Convert to numpy and flatten if needed
+    time_axis = np.arange(len(audio_signal))
+    plt.plot(time_axis, audio_signal, linewidth=1)
+    
+    # Set class name as title
+    class_name = label
+    plt.title(class_name, fontsize=10)
+    
+    # Improve y-axis
+    plt.yticks(np.arange(-1.0, 1.1, 0.5), fontsize=8)
+    plt.ylim([-1.1, 1.1])
+    
+    # Improve x-axis
+    plt.xticks(fontsize=8)
+    
+    # Remove top and right spines for cleaner look
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    
+    # Add very light grid for better readability
+    plt.grid(True, linestyle='--', alpha=0.3)
+    
+    plt.show()
+
+
+def visualize_waveforms(wavs, labels):
     """
     Visualize some waveforms.
 
     Args:
         wavs : waveform files
         labels : waveform labels
-        class_to_index : mapping of class (label) names to indices
     
     """
     plt.figure(figsize=(20, 16)) 
@@ -133,8 +281,6 @@ def visualize_waveforms(wavs, labels, class_to_index):
     cols = 4
     n = rows * cols
     
-    # Create mapping from index to class name for lookup of class name
-    index_to_class = {v: k for k, v in class_to_index.items()}
     
     for i in range(n):
 
@@ -146,7 +292,7 @@ def visualize_waveforms(wavs, labels, class_to_index):
         plt.plot(time_axis, audio_signal, linewidth=1)
         
         # Set class name as title
-        class_name = index_to_class[labels[i].numpy()] if hasattr(labels[i], 'numpy') else index_to_class[labels[i]]
+        class_name = labels[i]
         plt.title(class_name, fontsize=10)
         
         # Improve y-axis
@@ -168,16 +314,221 @@ def visualize_waveforms(wavs, labels, class_to_index):
     plt.show()
 
 
+def visualize_data_distribution(dataframe):
+    """
+    Visualize the distribution of classes in the dataset.
+    Important for understanding if the model might perform
+    less well on some specific words.
+    
+    Args:
+        dataframe: Pandas DataFrame containing the dataset
+    """
+    plt.figure(figsize=(12, 6))
+    class_counts = dataframe['label'].value_counts()
+    class_counts.plot(kind='bar')
+    plt.title('Class Distribution')
+    plt.xlabel('Class')
+    plt.ylabel('Count')
+    plt.xticks(rotation=45)
+    plt.show()
 
 
+def visualize_wavs_by_class(wavs, labels, class_name):
+
+    
+    """
+    Show the amplitude of the waveforms by class.
+    
+    Args:
+        wavs: Waveform files
+        labels: Waveform labels
+    """
+
+
+    
+    curr_class_wavs = []
+    # Iterate through the waveforms and labels
+    for wav, label in zip(wavs, labels):
+        if label == class_name:
+            curr_class_wavs.append(wav.numpy().flatten())
+    
+    # Plot the waveforms of the class 
+    plt.figure(figsize=(20, 16))
+    # Define the number of rows and columns for subplots based on the number of waveforms
+    n = len(curr_class_wavs)
+    # If there are more than 16 waveforms, limit to 16
+    n = min(n, 16)
+    rows = 4
+    cols = 4
+    for i in range(n):
+        ax = plt.subplot(rows, cols, i+1)
+        
+        # Extract and plot audio data
+        audio_signal = curr_class_wavs[i]
+        time_axis = np.arange(len(audio_signal))
+        plt.plot(time_axis, audio_signal, linewidth=1)
+        plt.title(class_name, fontsize=10)
+        plt.yticks(np.arange(-1.0, 1.1, 0.5), fontsize=8)
+        plt.ylim([-1.1, 1.1])
+        plt.xticks(fontsize=8)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        plt.grid(True, linestyle='--', alpha=0.3)
+    
+    plt.tight_layout(pad=2.0)
+    plt.subplots_adjust(hspace=0.4)
+    plt.show()
+
+
+def visualize_single_spectrogram(spectrogram, frame_step, sample_rate=16000):
+    if len(spectrogram.shape) > 2:
+        assert len(spectrogram.shape) == 3
+        spectrogram = np.squeeze(spectrogram, axis=-1)
+    
+    # Convert the frequencies to log scale and transpose, so that the time is
+    # represented on the x-axis (columns) (thats what the transposing step does).
+    # Add an epsilon to avoid taking a log of zero.
+    log_spec = np.log(spectrogram.T + np.finfo(float).eps)
+    height = log_spec.shape[0]
+    width = log_spec.shape[1]
+    
+    # Calculate the x-axis values to match the waveform samples (up to 16000)
+    # Each spectrogram frame corresponds to frame_step samples in the original waveform
+    x_values = np.linspace(0, frame_step * width, width)
+    
+    plt.figure(figsize=(12, 4))
+    plt.pcolormesh(x_values, range(height), log_spec)
+    plt.colorbar(format='%+2.0f dB')
+    plt.title('Spectrogram')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Frequency bin')
+    
+    # Set x-axis limit to match the waveform's sample count (16000)
+    if frame_step * width > sample_rate:
+        plt.xlim([0, sample_rate])
+    
+    plt.show()
+
+
+def visualize_waveform_and_spectrogram(waveform, spectrogram, frame_step, label=None, sample_rate=16000):
+    # Create a figure with two subplots, stacked vertically
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+    
+    # Plot waveform on top subplot
+    axes[0].plot(waveform)
+    axes[0].set_title('Waveform')
+    axes[0].set_xlabel('Sample Index')
+    axes[0].set_ylabel('Amplitude')
+    axes[0].set_xlim([0, len(waveform)])
+    
+    # Prepare spectrogram for bottom subplot
+    if len(spectrogram.shape) > 2:
+        assert len(spectrogram.shape) == 3
+        spectrogram = np.squeeze(spectrogram, axis=-1)
+    
+    log_spec = np.log(spectrogram.T + np.finfo(float).eps)
+    height = log_spec.shape[0]
+    width = log_spec.shape[1]
+    
+    # Calculate the x-axis values to match the waveform samples
+    x_values = np.linspace(0, frame_step * width, width)
+    
+    # Plot spectrogram on bottom subplot
+    im = axes[1].pcolormesh(x_values, range(height), log_spec)
+  #  fig.colorbar(im, ax=axes[1], format='%+2.0f dB')
+    axes[1].set_title('Spectrogram')
+    axes[1].set_xlabel('Sample Index')
+    axes[1].set_ylabel('Frequency bin')
+    
+    # Add a main title if label is provided
+    if label:
+        plt.suptitle(label)
+    
+    # Adjust layout to prevent overlap
+    plt.tight_layout()
+    plt.show()
+
+ 
 
 # TODO : normalization of audio ?
+# TODO : next steps :
+    # understand if the spectrogram is correctly implemented like that
+    # then go lecture step by step (filterbanks, mel, logs, MFCC,...)
+    # add the audio noise (and show how it differs when we add it onto audio signals)
 if __name__ == '__main__':
-    train_ds, val_ds, test_ds, class_to_index = load_audio_dataset(data_dir = 'speech_commands_v0.02', validation_file = 'speech_commands_v0.02/validation_list.txt', test_file = 'speech_commands_v0.02/testing_list.txt')
 
-    for example_audio, example_labels in train_ds.take(1):
+    # Load data
+    train_files, train_labels, val_files, val_labels, test_files, test_labels, class_to_index = load_audio_dataset(data_dir = 'speech_commands_v0.02', validation_file = 'speech_commands_v0.02/validation_list.txt', test_file = 'speech_commands_v0.02/testing_list.txt')
 
-        visualize_waveforms(example_audio[0:16], example_labels[0:16], class_to_index)
+    # Check the data split (predefined in the text files)
+    total = len(train_files) + len(val_files) + len(test_files)
+    print(f"Percentage of training samples: {len(train_files)/total*100:.2f}%")
+    print(f"Percentage of validation samples: {len(val_files)/total*100:.2f}%")
+    print(f"Percentage of testing samples: {len(test_files)/total*100:.2f}%")
+
+    # Load into pandas dataframes
+    train_df = pd.DataFrame({'file_path': train_files, 'label': list(map(lambda x : idx_to_label_conversion(x,class_to_index), train_labels)), 'split': 'train'})
+    val_df = pd.DataFrame({'file_path': val_files, 'label': list(map(lambda x : idx_to_label_conversion(x, class_to_index), val_labels)), 'split': 'val'})
+    test_df = pd.DataFrame({'file_path': test_files, 'label': list(map(lambda x : idx_to_label_conversion(x,class_to_index), test_labels)), 'split': 'test'})
+
+    # Concatenate the dataframes
+    all_df = pd.concat([train_df, val_df, test_df], ignore_index=True)
+
+    # Save the dataframe to a CSV file
+   # all_df.to_csv('speech_commands_dataset.csv', index=False)
 
 
+   # visualize_data_distribution(all_df)
+
+    # Next, we want to check the actual audio signals. Since loading all the samples into
+    # memory is not possible, we will only load a few samples (100) for analysis
+
+    # Set random seed for reproducibility
+    random.seed(42)
+
+
+    wavs = []
+    wav_shapes = []
+    names_labels = []
+    sample_rates = []
+
+    # Randomly sample 100 files from the training set
+    train_examples = random.sample(list(zip(train_files, list(map(lambda x : idx_to_label_conversion(x, class_to_index), train_labels)))), 100)
+
+    # Extract some information from the audio files
+    for idx,elem in enumerate(train_examples):
+        wav, sample_rate = read_path_to_wav(elem[0])
+        wavs.append(tf.squeeze(wav, axis = -1))
+        names_labels.append(elem[1])
+        wav_shapes.append(tf.shape(tf.squeeze(wav, axis = -1)))
+        sample_rates.append(sample_rate)
+
+    # Assess whether all audio files have 16000 samples
+   # assert all(shape == 16000 for shape in wav_shapes), "Not all audio files have the same shape!"
+
+    # Visualize the waveforms (of the first 16 samples)
+   # visualize_waveforms(wavs[:16], names_labels[:16])
+
+    # Visualize waveforms of a specific class
+  #  visualize_wavs_by_class(wavs, names_labels, class_name = 'eight')
+
+
+    EXAMPLE = 0
+    # Visualize the spectrogram of a specific waveform
+    spectrogram, frame_step = get_spectrogram(wavs[EXAMPLE], sample_rates[EXAMPLE].numpy())
+
+   # visualize_single_spectrogram(spectrogram.numpy(), frame_step)
+   # visualize_single_waveform(wavs[1], names_labels[1])
+    visualize_waveform_and_spectrogram(wavs[EXAMPLE], spectrogram.numpy(), frame_step, names_labels[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
+
+
+    # We can see that our shapes are not all 16000 samples long ; therefore, for the creation of the dataset, we employ trimming & zero-padding (to 16000 samples)
+
+
+    # Create datasets (which also processes paths into audio files & does trimming/padding)
+    train_ds, val_ds, test_ds = create_tf_dataset(train_files, train_labels, batch_size = 32, mode = 'train'),\
+                                create_tf_dataset(val_files, val_labels, batch_size = 32, mode = 'val'),\
+                                create_tf_dataset(test_files, test_labels, batch_size = 32, mode = 'test')
+    
+    
 
