@@ -222,13 +222,116 @@ def get_spectrogram(wav, sample_rate = 16000):
 
 
     # TODO : what fft_length ? check : https://www.coursera.org/lecture/audio-signal-processing/stft-2-tjEQe
-    spectrogram = tf.signal.stft(wav, frame_length= frame_length, frame_step= frame_step,
+    spectrogram = tf.signal.stft(wav, frame_length= frame_length, frame_step= frame_step, fft_length= frame_length,
                         window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture (TODO: Eventually we can try different types of windows (e.g. Gaussian etc))
     # Obtain the magnitude of the STFT.
     spectrogram = tf.abs(spectrogram)
 
 
     return spectrogram, frame_step
+
+
+
+def apply_mel_filterbanks(spectrogram):
+    # Taken partly from https://www.tensorflow.org/api_docs/python/tf/signal/mfccs_from_log_mel_spectrograms
+
+    # Obtain the number of frequency bins of our spectrogram.
+    num_spectrogram_bins = tf.shape(spectrogram)[-1]
+
+    # Define the frequency band we are intereted into:
+    min_frequency = 80  # to filter out some background noise, we look at frequencies from 80 ...
+    max_frequency = float(sample_rate/2)    # ... up to Nyquist frequency (8000 Hz in our case)
+
+    # And the number of filters
+    num_mel_filters = 26
+
+    # Create transformation matrix that maps from linear frequency scale to mel frequency scale
+    mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(num_mel_filters, num_spectrogram_bins, sample_rate, min_frequency, max_frequency)
+
+    # Apply the transformation
+    mel_spectrogram = tf.tensordot(spectrogram, mel_weight_matrix, 1)
+
+    # Set output shape 
+    mel_spectrogram.set_shape(spectrogram.shape[:-1].concatenate(mel_weight_matrix.shape[-1:]))
+
+    # Compute a stabilized log to get log-magnitude mel-scale spectrogram
+    log_mel_spectrogram = tf.math.log(mel_spectrogram + np.finfo(float).eps)
+
+
+    return log_mel_spectrogram
+
+
+def get_mfccs(log_mel_spectrogram, frame_length, frame_step, M):
+    
+    # 1. Compute the DCT and selects the coefficients 2, ... 13 from the log-mel spectrogram
+    mfccs_0 = tf.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrogram)[..., 1:13]
+
+    # 2. Define the function to compute the delta coefficients:
+
+    def compute_delta(mfccs, M):
+    
+        # Pad the mfccs at the beginning and at the end to handle boundary frames
+        padded_mfccs = tf.pad(mfccs, [[0, 0], [M, M], [0, 0]], mode='SYMMETRIC')
+    
+        # Prepare the denominator: 2 * sum(m²)
+        denominator = 2 * sum([m**2 for m in range(1, M+1)])
+    
+        # Initialize the deltas
+        deltas = tf.zeros_like(mfccs)
+    
+        # Iterate through each m value
+        for m in range(1, M+1):
+        
+            # Get frames at n+m
+            next_frames = padded_mfccs[:, M+m:M+m+mfccs.shape[1], :]
+            # Note that in the padding operation we added M frames at the beginning (and M at the end), shifting the indexes by M (i -> i+M).
+        
+            # Get frames at n-m
+            prev_frames = padded_mfccs[:, M-m:M-m+mfccs.shape[1], :]
+        
+            # Add weighted difference to the delta coefficients
+            deltas += m * (next_frames - prev_frames) / denominator
+    
+        return deltas
+    
+    #TODO: check this website https://desh2608.github.io/2019-07-26-delta-feats/
+    
+
+    # 3. Compute the first derivative of the MFCCs
+    mfccs_delta_1 = compute_delta(mfccs_0, M)
+
+
+    # 4. Compute the second derivative of the MFCCs
+    mfccs_delta_2 = compute_delta(mfccs_delta_1, M)
+
+
+    # 5. Compute the energies of the signal:
+
+    # First energy
+    # Divide the raw audio into frames
+    framed_wav = tf.signal.frame(wav, frame_length= frame_length, frame_step= frame_step)
+    # Compute the energy of each frame
+    frame_energy = tf.reduce_sum(framed_wav**2, axis=-1)
+    # Take the logarithm
+    log_frame_energy = tf.math.log10(frame_energy + np.finfo(float).eps)
+    # Add a dimension to match the shape of mfccs_0
+    log_frame_energy = tf.expand_dims(log_frame_energy, axis=-1)
+
+    # Second energy
+    energy_delta_1 = compute_delta(log_frame_energy, M)
+
+    # Third energy
+    energy_delta_2 = compute_delta(energy_delta_1, M)
+
+    # 6. Finally, concatenate the MFCCs, delta coefficients and energy coefficients:
+    mfccs = tf.concat([mfccs_0, mfccs_delta_1, mfccs_delta_2, log_frame_energy, energy_delta_1, energy_delta_2], axis=-1)
+
+    return mfccs
+    
+
+    
+
+
 
 
 
@@ -527,6 +630,11 @@ if __name__ == '__main__':
    # visualize_single_waveform(wavs[1], names_labels[1])
     visualize_waveform_and_spectrogram(wavs[EXAMPLE], spectrogram.numpy(), frame_step, names_labels[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
 
+    log_mel_spectrogram = apply_mel_filterbanks(spectrogram)
+
+    mfccs = get_mfccs(log_mel_spectrogram, frame_length = 400, frame_step = frame_step, M = 2)
+
+    #TODO: We need to define frame_length and frame_step both outside of the function, here you just took frame_step from the spectrogram function
 
     # We can see that our shapes are not all 16000 samples long ; therefore, for the creation of the dataset, we employ trimming & zero-padding (to 16000 samples)
 
@@ -535,6 +643,7 @@ if __name__ == '__main__':
     train_ds, val_ds, test_ds = create_tf_dataset(train_files, train_labels, batch_size = 32, mode = 'train'),\
                                 create_tf_dataset(val_files, val_labels, batch_size = 32, mode = 'val'),\
                                 create_tf_dataset(test_files, test_labels, batch_size = 32, mode = 'test')
+
     
     
 
