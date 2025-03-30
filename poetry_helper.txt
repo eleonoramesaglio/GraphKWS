@@ -11,4 +11,3 @@ To add a dependency (e.g. tensorflow) : poetry add tensorflow
 
 poetry config virtualenvs.in-project true
 poetry install
-

@@ -5,6 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd 
 import random 
+import platform
+
+system = platform.system()
 
 
 
@@ -116,7 +119,10 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
         for audio_file in class_dir.glob('*.wav'):
             # Get relative path for matching with validation/test lists (i.e. bed/0a7_nohash_0.wav)
             rel_path = os.path.join(class_dir.name, audio_file.name)
-            
+            # Needed for windows compatibility
+            if system == "Windows":
+                rel_path = rel_path.split("\\")
+                rel_path = "/".join(rel_path)
             if rel_path in test_files:
                 test_files_list.append(str(audio_file))
                 test_labels.append(class_idx)
@@ -216,8 +222,8 @@ def get_spectrogram(wav, sample_rate = 16000):
 
 
     # TODO : what fft_length ? check : https://www.coursera.org/lecture/audio-signal-processing/stft-2-tjEQe
-    spectrogram = tf.signal.stft(wav, frame_length= frame_length, frame_step= frame_step, fft_length= 1024,
-                        window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture
+    spectrogram = tf.signal.stft(wav, frame_length= frame_length, frame_step= frame_step,
+                        window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture (TODO: Eventually we can try different types of windows (e.g. Gaussian etc))
     # Obtain the magnitude of the STFT.
     spectrogram = tf.abs(spectrogram)
 
