@@ -14,7 +14,8 @@ dependencies = [
     "numpy (>=1.26.0,<2.2.0)",
     "tensorflow-io (>=0.37.1,<0.38.0)",
     "matplotlib (>=3.10.1,<4.0.0)",
-    "pandas (>=2.2.3,<3.0.0)"
+    "pandas (>=2.2.3,<3.0.0)",
+    "sounddevice (>=0.5.1,<0.6.0)",
 ]
 
 
