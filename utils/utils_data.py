@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import pandas as pd 
 import random 
 import platform
+from pathlib import Path
+import sounddevice as sd
+
 
 system = platform.system()
 
@@ -66,11 +69,246 @@ def read_path_to_wav(file_path):
     
     return wav, sample_rate
 
+def listen_audio(wav, sample_rate=16000):
+    """
+    Listen to the audio waveform in a Python script.
+    
+    Args:
+        wav: Audio waveform tensor or numpy array
+        sample_rate: Sample rate of the audio file
+    """
+    # Convert to numpy if it's a tensor
+    if hasattr(wav, 'numpy'):
+        wav = wav.numpy()
+    
+    # Ensure the audio is normalized
+    if np.abs(wav).max() > 1.0:
+        wav = wav / np.abs(wav).max()
+    
+    # Play the audio
+    sd.play(wav, sample_rate)
+    sd.wait()  # Wait until audio finishes playing
 
+
+### MANIPULATION FUNCTIONS 
+
+# THESE TWO FOR SINGLE WAV FILES
+
+def add_noise(wav, noise_dir='speech_commands_v0.02/_background_noise_', 
+              noise_type='random', min_snr_db=-5, max_snr_db=10):
+    """
+    Add noise to an audio waveform at a random SNR between min_snr_db and max_snr_db.
+    Using : https://github.com/hrtlacek/SNR/blob/main/SNR.ipynb
+
+    Approach for random sampling is inspired by Andrade2018 paper.
+    
+    Args:
+        wav: Audio waveform
+        noise_dir: Directory containing noise files
+        noise_type: Type of noise ('random', 'white', etc.)
+        min_snr_db: Minimum SNR in dB
+        max_snr_db: Maximum SNR in dB
+    Returns:
+        wavs_noisy: waveform with added noise at specified SNR
+    """
+    # Load the noise files
+    noise_files = list(pathlib.Path(noise_dir).glob('*.wav'))
+    noise_files = [str(noise_file) for noise_file in noise_files]
+    noise_dir = Path(noise_dir + '/')
+
+    if noise_type == 'random':
+        # Randomly select a noise file
+        noise_file = random.choice(noise_files)
+    else:
+        noise_file = noise_dir / (noise_type + '.wav')
+        noise_file = str(noise_file)
+        
+    # Read the noise file
+    noise_wav, _ = read_path_to_wav(noise_file)
+
+    # Get a random segment of noise
+    noise_length = tf.shape(noise_wav)[0]
+    start_index = random.randint(0, noise_length - 16000)
+    noise_segment = noise_wav[start_index:start_index + 16000]
+    
+    # Ensure the noise segment has the same shape as the wav
+    if len(noise_segment.shape) > 1:
+        noise_segment = tf.squeeze(noise_segment, axis=-1)
+    
+    # Calculate signal power
+    signal_power = tf.reduce_mean(tf.square(wav))
+    noise_power = tf.reduce_mean(tf.square(noise_segment))
+    
+    # Generate random SNR in the specified range
+    target_snr_db = random.uniform(min_snr_db, max_snr_db)
+    
+    # Calculate the scaling factor for the noise
+    target_snr_linear = 10 ** (target_snr_db / 10)
+    scaling_factor = tf.sqrt(signal_power / (noise_power * target_snr_linear))
+    
+    # Scale the noise to achieve the target SNR
+    scaled_noise = noise_segment * scaling_factor
+    
+    # Add the scaled noise to the signal
+    wav_noisy = wav + scaled_noise
+    
+    return wav_noisy
+
+
+def add_padding_or_trimming(wav, target_length = 16000, padding_mode = 'realistic'):
+  
+    """
+    Add padding or trimming to the audio waveform to make it a fixed length.
+
+
+    
+    Args:
+        wav: Audio waveform
+        target_length: Target length in samples
+        padding_mode: Padding mode ('zeros' or 'realistic')
+    Returns:
+        wav: Padded or trimmed waveform
+    """
+    # Get the current length of the waveform
+    current_length = tf.shape(wav)[0]
+
+    # Check if we need to pad or trim
+    if current_length == target_length:
+        print("Already at target length; no padding or trimming needed.")
+        return wav
+    
+    # Handle different lengths
+   
+    else:
+        # First, unsqueeze in the last axis (needed for padding)
+        wav = tf.expand_dims(wav, axis=-1)
+        if current_length > target_length:
+            # Trim to target length
+            wav = wav[:target_length]
+        else:
+            # TODO : unrealiable, maybe try something better here in the end (instead of zero padding)
+            if padding_mode == 'realistic':
+                # Take the first n_pad samples of the signal and repeat them as padding
+                n_pad = 100
+                wav_first_100 = wav[:n_pad]
+                # Repeat the first 100 samples to fill the gap (along the time axis)
+
+                # Calculate the number of repetitions needed
+                n_repititions = (target_length - current_length) // n_pad
+                wav_padding = tf.tile(wav_first_100, [n_repititions + 1, 1])
+                # Concatenate the original wav with the padding
+                wav = tf.concat([wav, wav_padding[:target_length - current_length]], axis=0)
+
+                
+            else:
+                # Pad with zeros to reach target length
+                paddings = [[0, target_length - current_length], [0, 0]]
+                wav = tf.pad(wav, paddings)
+        
+    # Finally, squeeze the wav (i.e. remove the channel dimension (we have one channel))
+    wav = tf.squeeze(wav, axis=-1)
+    
+    return wav
+
+# THIS ONE FOR DATASET
+
+def preprocess_audio(file_path, label, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+    """
+    Preprocess the audio file by loading, trimming/padding, and normalizing.
+    
+    Args:
+        
+        file_path: Path to the audio file
+        label: Label of the audio file
+        noise: Boolean indicating whether to add noise or not
+
+    Returns:
+        wav: Preprocessed waveform
+        label: Label of the audio file"""
+    # Load audio file
+    file_contents = tf.io.read_file(file_path)
+    # Decode wav (returns waveform and sample rate)
+    wav, sample_rate = tf.audio.decode_wav(file_contents)
+    
+
+    # Since not all audio samples have the same length, we need to
+    # ensure they have the same length (for batching) by padding shorter/
+    # trimming longer audio files
+    # Standardize length to 16000 samples (1 second at 16kHz)
+
+    target_length = 16000
+    
+    # Get current length
+    current_length = tf.shape(wav)[0]
+    
+    # Handle different lengths
+    if current_length > target_length:
+        # Trim to target length
+        wav = wav[:target_length]
+    else:
+        # Pad with zeros to reach target length
+        paddings = [[0, target_length - current_length], [0, 0]]
+        wav = tf.pad(wav, paddings)
+
+
+    # Squeeze the wav (i.e. remove the channel dimension (we have one channel))
+    wav = tf.squeeze(wav, axis = -1)
+
+    if noise == True:
+        # Load the noise files
+        noise_files = list(pathlib.Path('speech_commands_v0.02/_background_noise_').glob('*.wav'))
+        noise_files = [str(noise_file) for noise_file in noise_files]
+        noise_dir = Path('speech_commands_v0.02/_background_noise_' + '/')
+
+        if noise_type == 'random':
+            # Randomly select a noise file
+            noise_file = random.choice(noise_files)
+        else:
+            noise_file = noise_dir / (noise_type + '.wav')
+            noise_file = str(noise_file)
+            
+       
+        noise_wav, _ = read_path_to_wav(noise_file)
+
+        # Get a random segment of noise
+        noise_length = tf.shape(noise_wav)[0]
+
+        start_index = tf.random.uniform(
+            shape=[], 
+            minval=0, 
+            maxval=noise_length - 16000,
+            dtype=tf.int32
+                                        )
+      #  start_index = random.randint(0, int(noise_length) - 16000)
+
+
+        noise_segment = noise_wav[start_index:start_index + 16000]
+        
+        # Ensure the noise segment has the same shape as the wav
+        if len(noise_segment.shape) > 1:
+            noise_segment = tf.squeeze(noise_segment, axis=-1)
+        
+        # Calculate signal power
+        signal_power = tf.reduce_mean(tf.square(wav))
+        noise_power = tf.reduce_mean(tf.square(noise_segment))
+        
+        # Generate random SNR in the specified range
+        target_snr_db = random.uniform(min_snr_db, max_snr_db)
+        
+        # Calculate the scaling factor for the noise
+        target_snr_linear = 10 ** (target_snr_db / 10)
+        scaling_factor = tf.sqrt(signal_power / (noise_power * target_snr_linear))
+        
+        # Scale the noise to achieve the target SNR
+        scaled_noise = noise_segment * scaling_factor
+        
+        # Add the scaled noise to the signal
+        wav = wav + scaled_noise
+    
+    return wav, label
 
 
 ### MAIN FUNCTIONS 
-
 
 def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     """
@@ -141,9 +379,7 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     return train_files, train_labels, val_files_list, val_labels, test_files_list, test_labels, class_to_index
 
     
-
-
-def create_tf_dataset(path_files, labels, batch_size = 32, mode = 'train'):
+def create_tf_dataset(path_files, labels, batch_size = 32, mode = 'train', noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Create a TensorFlow dataset from the audio files and labels.
     Args:
@@ -160,45 +396,24 @@ def create_tf_dataset(path_files, labels, batch_size = 32, mode = 'train'):
     if mode == 'train':
         ds = ds.shuffle(buffer_size=len(ds))
  
-    ds = ds.map(preprocess_audio, num_parallel_calls=tf.data.AUTOTUNE)
+    ds = ds.map(
+    lambda file_path, label: preprocess_audio(
+        file_path, 
+        label, 
+        noise=noise, 
+        noise_type=noise_type, 
+        min_snr_db=min_snr_db, 
+        max_snr_db=max_snr_db
+    ),
+    num_parallel_calls=tf.data.AUTOTUNE
+                )  
+     
     ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     
     return ds
 
 
 
-
-def preprocess_audio(file_path, label):
-    # Load audio file
-    file_contents = tf.io.read_file(file_path)
-    # Decode wav (returns waveform and sample rate)
-    wav, sample_rate = tf.audio.decode_wav(file_contents)
-    
-
-    # Since not all audio samples have the same length, we need to
-    # ensure they have the same length (for batching) by padding shorter/
-    # trimming longer audio files
-    # Standardize length to 16000 samples (1 second at 16kHz)
-
-    target_length = 16000
-    
-    # Get current length
-    current_length = tf.shape(wav)[0]
-    
-    # Handle different lengths
-    if current_length > target_length:
-        # Trim to target length
-        wav = wav[:target_length]
-    else:
-        # Pad with zeros to reach target length
-        paddings = [[0, target_length - current_length], [0, 0]]
-        wav = tf.pad(wav, paddings)
-
-
-    # Finally, squeeze the wav (i.e. remove the channel dimension (we have one channel))
-    wav = tf.squeeze(wav, axis = -1)
-    
-    return wav, label
 
 
 
@@ -226,6 +441,9 @@ def get_spectrogram(wav, sample_rate = 16000):
                         window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture (TODO: Eventually we can try different types of windows (e.g. Gaussian etc))
     # Obtain the magnitude of the STFT.
     spectrogram = tf.abs(spectrogram)
+
+    # Until now, we computed the power spectrogram
+    # We have fft_lengh= 400, so we represent fft_lengh/2= 200 frequency bins
 
 
     return spectrogram, frame_step
@@ -328,7 +546,6 @@ def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M):
     return mfccs
     
 
-    
 
 
 
@@ -557,7 +774,6 @@ def visualize_waveform_and_spectrogram(waveform, spectrogram, frame_step, label=
     plt.show()
 
 
-    
 def visualize_mfccs(mfccs):
     # If there's a batch dimension and batch_size=1, remove it
     if len(mfccs.shape) == 3 and mfccs.shape[0] == 1:
@@ -601,10 +817,7 @@ def visualize_mfccs(mfccs):
  
 
 # TODO : normalization of audio ?
-# TODO : next steps :
-    # understand if the spectrogram is correctly implemented like that
-    # then go lecture step by step (filterbanks, mel, logs, MFCC,...)
-    # add the audio noise (and show how it differs when we add it onto audio signals)
+
 if __name__ == '__main__':
 
     # Load data
@@ -663,17 +876,37 @@ if __name__ == '__main__':
   #  visualize_wavs_by_class(wavs, names_labels, class_name = 'eight')
 
 
-    EXAMPLE = 0
+    EXAMPLE = 4
+    wav_padded = add_padding_or_trimming(wavs[EXAMPLE], target_length = 16000, padding_mode = 'zeros')
+    wav_noisy = add_noise(wav_padded, noise_dir = 'speech_commands_v0.02/_background_noise_', noise_type = 'exercise_bike')
+    
+
+    # Listen to the audio
+    #listen_audio(wavs[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
+    # Listen to the noisy audio
+    listen_audio(wav_noisy, sample_rate = sample_rates[EXAMPLE].numpy())
+    # Listen to the padded audio
+   # listen_audio(wav_padded, sample_rate = sample_rates[EXAMPLE].numpy())
+
+    
+  #  visualize_single_waveform(wavs[EXAMPLE], names_labels[EXAMPLE])
+    # Plot noisy waveforms
+    # visualize_single_waveform(wav_noisy, names_labels[EXAMPLE] + ' (noisy)')
+    # Plot the padded waveform
+  #  visualize_single_waveform(wav_padded, names_labels[EXAMPLE] + ' (padded)')
+
     # Visualize the spectrogram of a specific waveform
-    spectrogram, frame_step = get_spectrogram(wavs[EXAMPLE], sample_rates[EXAMPLE].numpy())
+    spectrogram, frame_step = get_spectrogram(wav_noisy, sample_rates[EXAMPLE].numpy())
 
    # visualize_single_spectrogram(spectrogram.numpy(), frame_step)
    # visualize_single_waveform(wavs[1], names_labels[1])
-    visualize_waveform_and_spectrogram(wavs[EXAMPLE], spectrogram.numpy(), frame_step, names_labels[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
+  #  visualize_waveform_and_spectrogram(wavs[EXAMPLE], spectrogram.numpy(), frame_step, names_labels[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
+
+
 
     log_mel_spectrogram = apply_mel_filterbanks(spectrogram)
 
-    mfccs = get_mfccs(log_mel_spectrogram, wav = wavs[EXAMPLE], frame_length = 400, frame_step = frame_step, M = 2)
+    mfccs = get_mfccs(log_mel_spectrogram, wav = wav_noisy, frame_length = 400, frame_step = frame_step, M = 2)
 
     visualize_mfccs(mfccs)
 
@@ -683,6 +916,7 @@ if __name__ == '__main__':
 
 
     # Create datasets (which also processes paths into audio files & does trimming/padding)
+    # TODO : look in Andrade2018 paper how they did noisy datasets, I think train has noise and val/test they tested both in noisy and non noisy conditions
     train_ds, val_ds, test_ds = create_tf_dataset(train_files, train_labels, batch_size = 32, mode = 'train'),\
                                 create_tf_dataset(val_files, val_labels, batch_size = 32, mode = 'val'),\
                                 create_tf_dataset(test_files, test_labels, batch_size = 32, mode = 'test')
