@@ -261,7 +261,7 @@ def apply_mel_filterbanks(spectrogram):
     return log_mel_spectrogram
 
 
-def get_mfccs(log_mel_spectrogram, frame_length, frame_step, M):
+def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M):
     
     # 1. Compute the DCT and selects the coefficients 2, ... 13 from the log-mel spectrogram
     mfccs_0 = tf.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrogram)[..., 1:13]
@@ -271,7 +271,7 @@ def get_mfccs(log_mel_spectrogram, frame_length, frame_step, M):
     def compute_delta(mfccs, M):
     
         # Pad the mfccs at the beginning and at the end to handle boundary frames
-        padded_mfccs = tf.pad(mfccs, [[0, 0], [M, M], [0, 0]], mode='SYMMETRIC')
+        padded_mfccs = tf.pad(mfccs, [[M, M], [0, 0]], mode='SYMMETRIC')
     
         # Prepare the denominator: 2 * sum(m²)
         denominator = 2 * sum([m**2 for m in range(1, M+1)])
@@ -283,11 +283,10 @@ def get_mfccs(log_mel_spectrogram, frame_length, frame_step, M):
         for m in range(1, M+1):
         
             # Get frames at n+m
-            next_frames = padded_mfccs[:, M+m:M+m+mfccs.shape[1], :]
-            # Note that in the padding operation we added M frames at the beginning (and M at the end), shifting the indexes by M (i -> i+M).
-        
+            next_frames = padded_mfccs[M+m:M+m+mfccs.shape[0]]
+            
             # Get frames at n-m
-            prev_frames = padded_mfccs[:, M-m:M-m+mfccs.shape[1], :]
+            prev_frames = padded_mfccs[M-m:M-m+mfccs.shape[0]]
         
             # Add weighted difference to the delta coefficients
             deltas += m * (next_frames - prev_frames) / denominator
@@ -313,7 +312,7 @@ def get_mfccs(log_mel_spectrogram, frame_length, frame_step, M):
     # Compute the energy of each frame
     frame_energy = tf.reduce_sum(framed_wav**2, axis=-1)
     # Take the logarithm
-    log_frame_energy = tf.math.log10(frame_energy + np.finfo(float).eps)
+    log_frame_energy = tf.math.log(frame_energy + np.finfo(float).eps)/tf.math.log(10.0)
     # Add a dimension to match the shape of mfccs_0
     log_frame_energy = tf.expand_dims(log_frame_energy, axis=-1)
 
@@ -557,6 +556,48 @@ def visualize_waveform_and_spectrogram(waveform, spectrogram, frame_step, label=
     plt.tight_layout()
     plt.show()
 
+
+    
+def visualize_mfccs(mfccs):
+    # If there's a batch dimension and batch_size=1, remove it
+    if len(mfccs.shape) == 3 and mfccs.shape[0] == 1:
+        mfccs = mfccs[0]
+    
+    # Transpose to get features in rows, frames in columns
+    mfccs = tf.transpose(mfccs)
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Display the MFCCs
+    img = plt.imshow(mfccs.numpy(), aspect='auto', origin='lower', 
+               interpolation='none', cmap='jet')
+    
+    # Add x and y labels
+    plt.xlabel('Time (frames)')
+    plt.ylabel('MFCC Coefficients')
+    
+    # Add y-ticks to show the different feature groups
+    feature_groups = [
+        'MFCC', 'Delta', 'Delta-Delta', 
+        'Energy', 'Delta Energy', 'Delta-Delta Energy'
+    ]
+    # Position the labels at the midpoint of each feature group
+    y_positions = [6, 18, 30, 36.5, 37.5, 38.5]
+    plt.yticks(y_positions, feature_groups)
+    
+    # Add gridlines to separate feature groups
+    plt.axhline(y=12, color='white', linestyle='-', alpha=0.3)
+    plt.axhline(y=24, color='white', linestyle='-', alpha=0.3)
+    plt.axhline(y=36, color='white', linestyle='-', alpha=0.3)
+    plt.axhline(y=37, color='white', linestyle='-', alpha=0.3)
+    plt.axhline(y=38, color='white', linestyle='-', alpha=0.3)
+    
+    plt.colorbar(img, label='Coefficient Value')
+    plt.title('MFCC Features')
+    plt.tight_layout()
+    plt.show()
+
+
  
 
 # TODO : normalization of audio ?
@@ -632,7 +673,9 @@ if __name__ == '__main__':
 
     log_mel_spectrogram = apply_mel_filterbanks(spectrogram)
 
-    mfccs = get_mfccs(log_mel_spectrogram, frame_length = 400, frame_step = frame_step, M = 2)
+    mfccs = get_mfccs(log_mel_spectrogram, wav = wavs[EXAMPLE], frame_length = 400, frame_step = frame_step, M = 2)
+
+    visualize_mfccs(mfccs)
 
     #TODO: We need to define frame_length and frame_step both outside of the function, here you just took frame_step from the spectrogram function
 
