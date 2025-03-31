@@ -304,8 +304,15 @@ def preprocess_audio(file_path, label, noise = False, noise_type = 'random', min
         
         # Add the scaled noise to the signal
         wav = wav + scaled_noise
+
+    # Next, get the spectrogram of the audio file
+    spectrogram, frame_step = get_spectrogram(wav)
+    # Apply mel filterbanks
+    log_mel_spectrogram = apply_mel_filterbanks(spectrogram, SAMPLE_RATE)
+    # Get the MFCC
+    mfcc = get_mfccs(log_mel_spectrogram, wav, frame_length=FRAME_LENGTH, frame_step=frame_step, M=2)
     
-    return wav, label
+    return mfcc, label
 
 
 ### MAIN FUNCTIONS 
@@ -450,7 +457,7 @@ def get_spectrogram(wav, sample_rate = 16000):
 
 
 
-def apply_mel_filterbanks(spectrogram):
+def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
     # Taken partly from https://www.tensorflow.org/api_docs/python/tf/signal/mfccs_from_log_mel_spectrograms
 
     # Obtain the number of frequency bins of our spectrogram.
@@ -479,7 +486,7 @@ def apply_mel_filterbanks(spectrogram):
     return log_mel_spectrogram
 
 
-def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M):
+def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
     
     # 1. Compute the DCT and selects the coefficients 2, ... 13 from the log-mel spectrogram
     mfccs_0 = tf.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrogram)[..., 1:13]
@@ -487,9 +494,11 @@ def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M):
     # 2. Define the function to compute the delta coefficients:
 
     def compute_delta(mfccs, M):
+        # Get the number of frames (needed, bc tensorflow has None dynamically for the first dimension and we need it in calculations)
+        frame_count = tf.shape(mfccs)[0]
     
         # Pad the mfccs at the beginning and at the end to handle boundary frames
-        padded_mfccs = tf.pad(mfccs, [[M, M], [0, 0]], mode='SYMMETRIC')
+        padded_mfccs = tf.pad(mfccs, [[M, M], [0, 0]], mode='SYMMETRIC')    # This pads [M,M] in time (frames) dimension and pads [0,0] in the frequency dimension
     
         # Prepare the denominator: 2 * sum(m²)
         denominator = 2 * sum([m**2 for m in range(1, M+1)])
@@ -501,10 +510,11 @@ def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M):
         for m in range(1, M+1):
         
             # Get frames at n+m
-            next_frames = padded_mfccs[M+m:M+m+mfccs.shape[0]]
+            next_frames = padded_mfccs[M+m:M+m+frame_count]
+            # The indexes are shifted by M with respect to the original mfccs because of the padding
             
             # Get frames at n-m
-            prev_frames = padded_mfccs[M-m:M-m+mfccs.shape[0]]
+            prev_frames = padded_mfccs[M-m:M-m+frame_count]
         
             # Add weighted difference to the delta coefficients
             deltas += m * (next_frames - prev_frames) / denominator
@@ -774,7 +784,7 @@ def visualize_waveform_and_spectrogram(waveform, spectrogram, frame_step, label=
     plt.show()
 
 
-def visualize_mfccs(mfccs):
+def visualize_mfccs(mfccs, label):
     # If there's a batch dimension and batch_size=1, remove it
     if len(mfccs.shape) == 3 and mfccs.shape[0] == 1:
         mfccs = mfccs[0]
@@ -789,6 +799,7 @@ def visualize_mfccs(mfccs):
                interpolation='none', cmap='jet')
     
     # Add x and y labels
+    plt.title(label)
     plt.xlabel('Time (frames)')
     plt.ylabel('MFCC Coefficients')
     
@@ -809,7 +820,7 @@ def visualize_mfccs(mfccs):
     plt.axhline(y=38, color='white', linestyle='-', alpha=0.3)
     
     plt.colorbar(img, label='Coefficient Value')
-    plt.title('MFCC Features')
+
     plt.tight_layout()
     plt.show()
 
@@ -819,6 +830,11 @@ def visualize_mfccs(mfccs):
 # TODO : normalization of audio ?
 
 if __name__ == '__main__':
+
+    SAMPLE_RATE = 16000 # TODO : given ? 
+    FRAME_LENGTH = 400
+    FRAME_STEP = 160 
+    # TODO : calculate these with sample rate
 
     # Load data
     train_files, train_labels, val_files, val_labels, test_files, test_labels, class_to_index = load_audio_dataset(data_dir = 'speech_commands_v0.02', validation_file = 'speech_commands_v0.02/validation_list.txt', test_file = 'speech_commands_v0.02/testing_list.txt')
@@ -884,7 +900,7 @@ if __name__ == '__main__':
     # Listen to the audio
     #listen_audio(wavs[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
     # Listen to the noisy audio
-    listen_audio(wav_noisy, sample_rate = sample_rates[EXAMPLE].numpy())
+  #  listen_audio(wav_noisy, sample_rate = sample_rates[EXAMPLE].numpy())
     # Listen to the padded audio
    # listen_audio(wav_padded, sample_rate = sample_rates[EXAMPLE].numpy())
 
@@ -896,7 +912,7 @@ if __name__ == '__main__':
   #  visualize_single_waveform(wav_padded, names_labels[EXAMPLE] + ' (padded)')
 
     # Visualize the spectrogram of a specific waveform
-    spectrogram, frame_step = get_spectrogram(wav_noisy, sample_rates[EXAMPLE].numpy())
+  #  spectrogram, frame_step = get_spectrogram(wav_noisy, sample_rates[EXAMPLE].numpy())
 
    # visualize_single_spectrogram(spectrogram.numpy(), frame_step)
    # visualize_single_waveform(wavs[1], names_labels[1])
@@ -904,23 +920,28 @@ if __name__ == '__main__':
 
 
 
-    log_mel_spectrogram = apply_mel_filterbanks(spectrogram)
+  #  log_mel_spectrogram = apply_mel_filterbanks(spectrogram)
 
-    mfccs = get_mfccs(log_mel_spectrogram, wav = wav_noisy, frame_length = 400, frame_step = frame_step, M = 2)
+  #  mfccs = get_mfccs(log_mel_spectrogram, wav = wav_noisy, frame_length = 400, frame_step = frame_step, M = 2)
 
-    visualize_mfccs(mfccs)
+  #  visualize_mfccs(mfccs)
 
-    #TODO: We need to define frame_length and frame_step both outside of the function, here you just took frame_step from the spectrogram function
 
     # We can see that our shapes are not all 16000 samples long ; therefore, for the creation of the dataset, we employ trimming & zero-padding (to 16000 samples)
 
-
     # Create datasets (which also processes paths into audio files & does trimming/padding)
     # TODO : look in Andrade2018 paper how they did noisy datasets, I think train has noise and val/test they tested both in noisy and non noisy conditions
-    train_ds, val_ds, test_ds = create_tf_dataset(train_files, train_labels, batch_size = 32, mode = 'train'),\
+    train_ds, val_ds, test_ds = create_tf_dataset(train_files, train_labels, batch_size = 32, mode = 'train', noise = True),\
                                 create_tf_dataset(val_files, val_labels, batch_size = 32, mode = 'val'),\
                                 create_tf_dataset(test_files, test_labels, batch_size = 32, mode = 'test')
 
     
     
+    # Check the shape of the dataset
+    for mfcc, label in train_ds.take(1):
+        print(f"Shape of the mfcc: {mfcc.shape}")
+        print(f"Shape of the label: {label.shape}")
 
+    # Visualize some examples 
+    for mfcc, label in train_ds.take(1):
+        visualize_mfccs(mfcc[0], idx_to_label_conversion(tf.get_static_value(label[0]), class_to_index))
