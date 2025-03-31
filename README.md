@@ -1,3 +1,9 @@
+# Installation
+
+Create a poetry virtual environment and run poetry install
+additionally, run pip install tensorflow-gnn (version 1.0.3)
+
+
 # Small Footprint Keyword Spotting (KWS)
 
 This repository contains the project for the Machine Learning for Human Data course of the Master's Degree in Data Science at the University of Padua.

@@ -1,3 +1,5 @@
+
+
 import tensorflow as tf 
 import os 
 import pathlib 
@@ -8,6 +10,7 @@ import random
 import platform
 from pathlib import Path
 import sounddevice as sd
+
 
 
 system = platform.system()
@@ -212,7 +215,7 @@ def add_padding_or_trimming(wav, target_length = 16000, padding_mode = 'realisti
 
 # THIS ONE FOR DATASET
 
-def preprocess_audio(file_path, label, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Preprocess the audio file by loading, trimming/padding, and normalizing.
     
@@ -228,7 +231,7 @@ def preprocess_audio(file_path, label, noise = False, noise_type = 'random', min
     # Load audio file
     file_contents = tf.io.read_file(file_path)
     # Decode wav (returns waveform and sample rate)
-    wav, sample_rate = tf.audio.decode_wav(file_contents)
+    wav, _ = tf.audio.decode_wav(file_contents)
     
 
     # Since not all audio samples have the same length, we need to
@@ -236,7 +239,8 @@ def preprocess_audio(file_path, label, noise = False, noise_type = 'random', min
     # trimming longer audio files
     # Standardize length to 16000 samples (1 second at 16kHz)
 
-    target_length = 16000
+
+    target_length = 16000 # think can be changed to sample_rate
     
     # Get current length
     current_length = tf.shape(wav)[0]
@@ -308,9 +312,10 @@ def preprocess_audio(file_path, label, noise = False, noise_type = 'random', min
     # Next, get the spectrogram of the audio file
     spectrogram, frame_step = get_spectrogram(wav)
     # Apply mel filterbanks
-    log_mel_spectrogram = apply_mel_filterbanks(spectrogram, SAMPLE_RATE)
+
+    log_mel_spectrogram = apply_mel_filterbanks(spectrogram, sample_rate)
     # Get the MFCC
-    mfcc = get_mfccs(log_mel_spectrogram, wav, frame_length=FRAME_LENGTH, frame_step=frame_step, M=2)
+    mfcc = get_mfccs(log_mel_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
     
     return mfcc, label
 
@@ -386,7 +391,7 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     return train_files, train_labels, val_files_list, val_labels, test_files_list, test_labels, class_to_index
 
     
-def create_tf_dataset(path_files, labels, batch_size = 32, mode = 'train', noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, batch_size = 32, mode = 'train', noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Create a TensorFlow dataset from the audio files and labels.
     Args:
@@ -407,6 +412,9 @@ def create_tf_dataset(path_files, labels, batch_size = 32, mode = 'train', noise
     lambda file_path, label: preprocess_audio(
         file_path, 
         label, 
+        sample_rate=sample_rate,
+        frame_length=frame_length,
+        frame_step=frame_step,
         noise=noise, 
         noise_type=noise_type, 
         min_snr_db=min_snr_db, 
@@ -829,6 +837,9 @@ def visualize_mfccs(mfccs, label):
 
 # TODO : normalization of audio ?
 
+
+
+"""
 if __name__ == '__main__':
 
     SAMPLE_RATE = 16000 # TODO : given ? 
@@ -945,3 +956,4 @@ if __name__ == '__main__':
     # Visualize some examples 
     for mfcc, label in train_ds.take(1):
         visualize_mfccs(mfcc[0], idx_to_label_conversion(tf.get_static_value(label[0]), class_to_index))
+"""
