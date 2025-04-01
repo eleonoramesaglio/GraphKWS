@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 
 
-def create_adjacency_matrix(mfcc, num_frames, label, mode = 'window', window_size = 5, alpha = 0.6, beta = 0.2):
+def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, alpha = 0.7, beta = 0.1):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -27,7 +27,7 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'window', window_siz
     if mode == 'window':
         # Create a sliding window adjacency matrix based on the window size
 
-        indices = tf.range(num_frames)
+        indices = tf.range(num_frames, dtype=tf.int32)
 
         # Create a column & row vector of the indices
         i = tf.reshape(indices, [-1, 1])
@@ -40,6 +40,9 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'window', window_siz
         # Based on that distance, create the adjacency matrix (by casting to 1 or 0)
         adjacency_matrix = tf.cast(distance <= window_size, dtype=tf.float32)
 
+        # Fix self loops by setting diagonal to 0
+        adjacency_matrix = tf.linalg.set_diag(adjacency_matrix, tf.zeros(num_frames, dtype=tf.float32))
+
 
 
     elif mode == 'similarity':
@@ -51,8 +54,7 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'window', window_siz
     else:
         raise ValueError("Unsupported mode: {}".format(mode))
     
-    # Fix self loops by setting diagonal to 0
-    adjacency_matrix = tf.linalg.set_diag(adjacency_matrix, tf.zeros(num_frames, dtype=tf.float32))
+
 
 
     return (mfcc, adjacency_matrix) , label
@@ -64,31 +66,29 @@ def similarity_function(mfccs, num_frames, alpha, beta):
 
     # Take as input the MFCCs of a single audio file (not batched)
     # Initialize
-    feature_similarity = tf.zeros((num_frames, num_frames))
-    temporal_similarity = tf.zeros((num_frames, num_frames))
-    similarity_matrix = tf.zeros((num_frames, num_frames))
+    feature_similarity = tf.zeros((num_frames, num_frames), dtype=tf.float32)
+    temporal_similarity = tf.zeros((num_frames, num_frames), dtype=tf.float32)
+    similarity_matrix = tf.zeros((num_frames, num_frames), dtype=tf.float32)
 
     # 1. Feature_similarity:
     # Normalize the feature vectors for cosine similarity
     normalized_features = tf.nn.l2_normalize(mfccs, axis=1)
-
     # Compute the normalized cosine similarity between all pairs of frames
-    for i in range(num_frames):
-        for j in range(num_frames):
-            if i != j:
-                feature_similarity[i, j] = tf.reduce_sum(normalized_features[i] * normalized_features[j])
-                feature_similarity[i, j] = (feature_similarity[i, j] + 1)/2    # Normalize to [0, 1]
-            else:
-                feature_similarity[i, j] = 0 # No self-similarity
+    cosine_similarity = tf.matmul(normalized_features, normalized_features, transpose_b=True)
+    feature_similarity = (cosine_similarity + 1) / 2
+    # Remove self-similarity
+    identity = tf.eye(num_frames)
+    feature_similarity = feature_similarity * (1 - identity)
 
     # 2. Temporal_similarity:  
     # Compute the temporal similarity based on the distance between frames
-    for i in range(num_frames):
-        for j in range(num_frames):
-            if i != j:
-                temporal_similarity[i, j] = tf.exp(- beta * tf.abs(i - j))
-            else:
-                temporal_similarity[i, j] = 0 # No self-similarity
+    indices = tf.range(num_frames, dtype=tf.float32)
+    i = tf.reshape(indices, [-1, 1])
+    j = tf.reshape(indices, [1, -1])
+    distance = tf.abs(i - j)
+    temporal_similarity = tf.exp(- beta * distance)
+    # Remove self-similarity
+    temporal_similarity = temporal_similarity * (1 - identity)
 
     # 3. Combine the two similarity matrices with a weighted sum
     similarity_matrix = (1 - alpha) * feature_similarity + alpha * temporal_similarity

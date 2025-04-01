@@ -66,7 +66,7 @@ def main():
 
 
 
-    (_, adjacency_matrix), _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='window', window_size=5)
+    (_, adjacency_matrix), _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', window_size=5)
 
 
     
