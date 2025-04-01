@@ -1,8 +1,9 @@
-import numpy as np 
+import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
 
 
-def create_adjacency_matrix(num_frames, mode = 'window', window_size = 5):
+def create_adjacency_matrix(mfccs, num_frames, mode = 'window', window_size = 5, alpha = 0.6, beta = 0.2):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -24,14 +25,61 @@ def create_adjacency_matrix(num_frames, mode = 'window', window_size = 5):
     
     if mode == 'window':
         # Create a sliding window adjacency matrix based on the window size
+        # Each frame is connected to its 'window_size' neighbors, creating a KNN-like structure
         for i in range(num_frames):
             start = i
             end = min(num_frames, i + window_size)
             adjacency_matrix[i, start:end] = 1.0
+
+    if mode == 'similarity':
+        # Create a similarity adjacency matrix based on the cosine similarity between frames, with a penalty for distance
+        # This should ideally cluster close frames with similar frequencies together, allowing for an identification of the phonemes/words
+        adjacency_matrix = similarity_function(mfccs, num_frames, alpha=alpha, beta=beta)
+
     else:
         raise ValueError("Unsupported mode: {}".format(mode))
     
     return adjacency_matrix
+
+
+#TODO: alpha and beta are best to be tuned on a validation set
+
+
+def similarity_function(mfccs, num_frames, alpha, beta):
+
+    # Take as input the MFCCs of a single audio file (not batched)
+    # Initialize
+    feature_similarity = tf.zeros((num_frames, num_frames))
+    temporal_similarity = tf.zeros((num_frames, num_frames))
+    similarity_matrix = tf.zeros((num_frames, num_frames))
+
+    # 1. Feature_similarity:
+    # Normalize the feature vectors for cosine similarity
+    normalized_features = tf.nn.l2_normalize(mfccs, axis=1)
+
+    # Compute the normalized cosine similarity between all pairs of frames
+    for i in range(num_frames):
+        for j in range(num_frames):
+            if i != j:
+                feature_similarity[i, j] = tf.reduce_sum(normalized_features[i] * normalized_features[j])
+                feature_similarity[i, j] = (feature_similarity[i, j] + 1)/2    # Normalize to [0, 1]
+            else:
+                feature_similarity[i, j] = 0 # No self-similarity
+
+    # 2. Temporal_similarity:  
+    # Compute the temporal similarity based on the distance between frames
+    for i in range(num_frames):
+        for j in range(num_frames):
+            if i != j:
+                temporal_similarity[i, j] = tf.exp(- beta * tf.abs(i - j))
+            else:
+                temporal_similarity[i, j] = 0 # No self-similarity
+
+    # 3. Combine the two similarity matrices with a weighted sum
+    similarity_matrix = (1 - alpha) * feature_similarity + alpha * temporal_similarity
+
+    return similarity_matrix
+
 
 
 def visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix"):
