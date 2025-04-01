@@ -48,9 +48,14 @@ def main():
                                                                batch_size = 32, mode = 'test')
     
 
+
+
+
     # Since all audios are padded to the same length, we can extract static sizes for the MFCCs
 
-    for mfcc, _ in train_ds.take(1):
+    for mfcc, label in train_ds.take(1):
+        example_mfcc = mfcc[0]
+        example_label = label[0]
         N_FRAMES = tf.shape(mfcc)[1]
         N_MFCCS = tf.shape(mfcc)[2]
 
@@ -59,12 +64,36 @@ def main():
     print(f"Number of MFCCs: {N_MFCCS}")
 
 
-    # Create static adjacency matrix
 
-    adjacency_matrix = utils_graph.create_adjacency_matrix(num_frames=N_FRAMES, mode='window', window_size=5)
+
+    (_, adjacency_matrix), _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='window', window_size=5)
+
+
     
     # Visualize the adjacency matrix
     utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
+
+
+    # Since some of our adjacency matrix modes will have a different adjacency matrix for each MFCC,
+    # we want to efficiently load them (i.e. not create them all at once). Therefore, we add them
+    # to our dataset aswell. 
+
+    # Create a new dataset with adjacency matrices
+
+    # use lambda because we want to apply the function to each element of the dataset, which is a tuple (mfcc, label) and we have additional 
+    # parameters in our create_adjacency_matrix function
+    train_ds = train_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
+    val_ds = val_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='window', window_size=5))
+    test_ds = test_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='window', window_size=5))
+
+    # Check the shape of the dataset
+    for data, label in train_ds.take(1):
+        print(f"MFCC shape: {data[0].shape}")
+        print(f"Adjacency matrix shape: {data[1].shape}")
+        print(f"Label shape: {label.shape}")
+
+
+
 
 if __name__ == '__main__':
     main()

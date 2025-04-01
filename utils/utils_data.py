@@ -428,10 +428,6 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
     return ds
 
 
-
-
-
-
 def get_spectrogram(wav, sample_rate = 16000):
   # Taken partly from : https://www.tensorflow.org/tutorials/audio/simple_audio
 
@@ -462,7 +458,6 @@ def get_spectrogram(wav, sample_rate = 16000):
 
 
     return spectrogram, frame_step
-
 
 
 def apply_mel_filterbanks(spectrogram, sample_rate = 16000):

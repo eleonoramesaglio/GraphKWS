@@ -7,13 +7,15 @@ import numpy as np
 
 
 
+
+
 def mfccs_to_graph_tensors(mfccs, adjacency_matrices):
     """
     Convert MFCC features to graph tensors using custom adjacency matrices.
     
     Args:
         mfccs: Tensor of shape [batch_size, n_frames, n_features]
-        adjacency_matrices: Tensor of shape [batch_size, n_frames, n_frames] # TODO : no  batch size, since static
+        adjacency_matrices: Tensor of shape [batch_size, n_frames, n_frames]
         
     Returns:
         List of GraphTensor objects

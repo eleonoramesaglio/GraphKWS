@@ -3,7 +3,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 
-def create_adjacency_matrix(mfccs, num_frames, mode = 'window', window_size = 5, alpha = 0.6, beta = 0.2):
+
+def create_adjacency_matrix(mfcc, num_frames, label, mode = 'window', window_size = 5, alpha = 0.6, beta = 0.2):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -21,30 +22,44 @@ def create_adjacency_matrix(mfccs, num_frames, mode = 'window', window_size = 5,
         adjacency_matrix: A 2D numpy array representing the adjacency matrix.
     """
 
-    adjacency_matrix = np.zeros((num_frames, num_frames), dtype=np.float32)
+    adjacency_matrix = tf.zeros((num_frames, num_frames), dtype=np.float32)
     
     if mode == 'window':
         # Create a sliding window adjacency matrix based on the window size
-        # Each frame is connected to its 'window_size' neighbors, creating a KNN-like structure
-        for i in range(num_frames):
-            start = i
-            end = min(num_frames, i + window_size)
-            adjacency_matrix[i, start:end] = 1.0
 
-    if mode == 'similarity':
+        indices = tf.range(num_frames)
+
+        # Create a column & row vector of the indices
+        i = tf.reshape(indices, [-1, 1])
+        j = tf.reshape(indices, [1,-1])
+
+        # Calculate the absolute distance between numbers ; creates a matrix of distances
+        # in size of (num_frames, num_frames)
+        distance = tf.abs(i-j)
+
+        # Based on that distance, create the adjacency matrix (by casting to 1 or 0)
+        adjacency_matrix = tf.cast(distance <= window_size, dtype=tf.float32)
+
+
+
+    elif mode == 'similarity':
         # Create a similarity adjacency matrix based on the cosine similarity between frames, with a penalty for distance
         # This should ideally cluster close frames with similar frequencies together, allowing for an identification of the phonemes/words
-        adjacency_matrix = similarity_function(mfccs, num_frames, alpha=alpha, beta=beta)
+        adjacency_matrix = similarity_function(mfcc, num_frames, alpha=alpha, beta=beta)
 
+    
     else:
         raise ValueError("Unsupported mode: {}".format(mode))
     
-    return adjacency_matrix
+    # Fix self loops by setting diagonal to 0
+    adjacency_matrix = tf.linalg.set_diag(adjacency_matrix, tf.zeros(num_frames, dtype=tf.float32))
+
+
+    return (mfcc, adjacency_matrix) , label
+
 
 
 #TODO: alpha and beta are best to be tuned on a validation set
-
-
 def similarity_function(mfccs, num_frames, alpha, beta):
 
     # Take as input the MFCCs of a single audio file (not batched)
