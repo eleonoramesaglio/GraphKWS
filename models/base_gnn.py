@@ -6,30 +6,36 @@ import numpy as np
 
 def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label):
 
+    # Print shapes to debug
+  #  tf.print("MFCC shape:", tf.shape(mfcc))
+  #  tf.print("Adjacency shape:", tf.shape(adjacency_matrix))
+  #  tf.print("Label shape:", tf.shape(label))
 
-    # Extract single example
-    features = mfcc # Shape: [n_frames, n_features]
-    adjacency = adjacency_matrix  # Shape: [n_frames, n_frames]
+
+    # Ensure current shape of MFCC (98 frames, 39 MFCCs)
+    mfcc_static = tf.reshape(mfcc, [98, 39]) 
+
     
     # Get edges from adjacency matrix
-    edges = tf.where(adjacency > 0)  # Returns indices where adjacency > 0
+    edges = tf.where(adjacency_matrix > 0)  # Returns indices where adjacency > 0
 
     # Get corresponding weights of edges from adjacency matrix
     # e.g. edges has saved [0,3] --> goes into adjacency[0,3] and gets the weight
-    weights = tf.gather_nd(adjacency, edges)  
+    weights = tf.gather_nd(adjacency_matrix, edges)  
     
     # The edges tensor has shape [num_edges, 2] where each row is [source, target]
     sources = edges[:, 0]
     targets = edges[:, 1]
-    
+
+
     # Create GraphTensor
     graph_tensor = tfgnn.GraphTensor.from_pieces(
         node_sets={
             "frames": tfgnn.NodeSet.from_fields(
                     
                 
-                features={"features": features},
-                sizes=[tf.shape(features)[0]]
+                features={"features": mfcc_static},  
+                sizes=[tf.shape(mfcc_static)[0]]
             )
         },
         edge_sets={
@@ -66,6 +72,7 @@ def mfccs_to_graph_tensors(mfccs, adjacency_matrices):
     Returns:
         List of GraphTensor objects
     """
+
     # Extract single example
     features = mfccs  # Shape: [n_frames, n_features]
     adjacency = adjacency_matrices  # Shape: [n_frames, n_frames]

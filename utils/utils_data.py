@@ -423,7 +423,7 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
     num_parallel_calls=tf.data.AUTOTUNE
                 )  
      
-    ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+  #  ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     
     return ds
 
