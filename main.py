@@ -57,10 +57,10 @@ def main():
     # Since all audios are padded to the same length, we can extract static sizes for the MFCCs
 
     for mfcc, label in train_ds.take(1):
-        example_mfcc = mfcc[0]
-        example_label = label[0]
-        N_FRAMES = tf.shape(mfcc)[1]
-        N_MFCCS = tf.shape(mfcc)[2]
+        example_mfcc = mfcc
+        example_label = label
+        N_FRAMES = tf.shape(mfcc)[0]
+        N_MFCCS = tf.shape(mfcc)[1]
 
 
     print(f"Number of frames: {N_FRAMES}")
@@ -74,7 +74,7 @@ def main():
 
     
     # Visualize the adjacency matrix
-   # utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
+    utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
 
 
     # Since some of our adjacency matrix modes will have a different adjacency matrix for each MFCC,
@@ -94,8 +94,8 @@ def main():
         print(f"MFCC shape: {mfcc.shape}")
         print(f"Adjacency matrix shape: {adjacency_matrix.shape}")
         print(f"Label shape: {label.shape}")
-        example_mfcc = mfcc[0]
-        example_adjacency_matrix = adjacency_matrix[0]
+        example_mfcc = mfcc
+        example_adjacency_matrix = adjacency_matrix
 
 
 
@@ -108,17 +108,23 @@ def main():
 
 
 
-    '''
+    
     # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
     train_ds = train_ds.map(lambda mfcc, adjacency_matrix, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
     val_ds = val_ds.map(lambda mfcc, adjacency_matrix, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
     test_ds = test_ds.map(lambda mfcc, adjacency_matrix, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
 
+    # Now batch
+
+    train_ds = train_ds.batch(32).prefetch(tf.data.AUTOTUNE)
+    val_ds = val_ds.batch(32).prefetch(tf.data.AUTOTUNE)
+    test_ds = test_ds.batch(32).prefetch(tf.data.AUTOTUNE)
+
     # Check the shape of the dataset
     for graph, label in train_ds.take(1):
         print(f"Graph shape: {graph.shape}")
         print(f"Label shape: {label.shape}")
-    '''
+    
 
 
 
