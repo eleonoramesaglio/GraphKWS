@@ -1,4 +1,7 @@
+import os
+os.environ["TF_USE_LEGACY_KERAS"] = "1" # needed for tfgnn
 from utils import utils_data, utils_graph
+from models import base_gnn
 
 import pandas as pd 
 import tensorflow as tf 
@@ -66,12 +69,12 @@ def main():
 
 
 
-    (_, adjacency_matrix), _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', window_size=5)
+    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', window_size=5)
 
 
     
     # Visualize the adjacency matrix
-    utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
+   # utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
 
 
     # Since some of our adjacency matrix modes will have a different adjacency matrix for each MFCC,
@@ -83,15 +86,39 @@ def main():
     # use lambda because we want to apply the function to each element of the dataset, which is a tuple (mfcc, label) and we have additional 
     # parameters in our create_adjacency_matrix function
     train_ds = train_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
-    val_ds = val_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='window', window_size=5))
-    test_ds = test_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='window', window_size=5))
+    val_ds = val_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
+    test_ds = test_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
 
     # Check the shape of the dataset
-    for data, label in train_ds.take(1):
-        print(f"MFCC shape: {data[0].shape}")
-        print(f"Adjacency matrix shape: {data[1].shape}")
+    for mfcc, adjacency_matrix, label in train_ds.take(1):
+        print(f"MFCC shape: {mfcc.shape}")
+        print(f"Adjacency matrix shape: {adjacency_matrix.shape}")
         print(f"Label shape: {label.shape}")
+        example_mfcc = mfcc[0]
+        example_adjacency_matrix = adjacency_matrix[0]
 
+
+
+    graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
+    #print(f"Graph example shape: {graph_example.shape}")
+      
+    print(f"Graph example: {graph_example}")
+    print("Edges:", graph_example.edge_sets["connections"].adjacency)
+
+
+
+
+    '''
+    # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
+    train_ds = train_ds.map(lambda mfcc, adjacency_matrix, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
+    val_ds = val_ds.map(lambda mfcc, adjacency_matrix, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
+    test_ds = test_ds.map(lambda mfcc, adjacency_matrix, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
+
+    # Check the shape of the dataset
+    for graph, label in train_ds.take(1):
+        print(f"Graph shape: {graph.shape}")
+        print(f"Label shape: {label.shape}")
+    '''
 
 
 

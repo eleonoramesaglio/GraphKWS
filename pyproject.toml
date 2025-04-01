@@ -15,6 +15,7 @@ dependencies = [
     "matplotlib (>=3.10.1,<4.0.0)",
     "pandas (>=2.2.3,<3.0.0)",
     "sounddevice (>=0.5.1,<0.6.0)",
+    "tf-keras (>=2.19.0,<3.0.0)",
 ]
 
 

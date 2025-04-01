@@ -57,7 +57,7 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
 
 
 
-    return (mfcc, adjacency_matrix) , label
+    return mfcc, adjacency_matrix , label
 
 
 
