@@ -105,6 +105,8 @@ def main():
     print(f"Graph example: {graph_example}")
     print("Edges:", graph_example.edge_sets["connections"].adjacency)
 
+    utils_graph.visualize_graph(graph_example, title="Graph Example")
+
 
 
 

@@ -1,10 +1,11 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import networkx as nx
 
 
-
-def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, alpha = 0.7, beta = 0.1):
+#TODO: alpha, beta and threshold are best to be tuned on a validation set
+def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, alpha = 0.7, beta = 0.1, threshold = 0.3):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -22,7 +23,7 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
         adjacency_matrix: A 2D numpy array representing the adjacency matrix.
     """
 
-    adjacency_matrix = tf.zeros((num_frames, num_frames), dtype=np.float32)
+    adjacency_matrix = tf.zeros((num_frames, num_frames), dtype=tf.float32)
     
     if mode == 'window':
         # Create a sliding window adjacency matrix based on the window size
@@ -48,7 +49,8 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
     elif mode == 'similarity':
         # Create a similarity adjacency matrix based on the cosine similarity between frames, with a penalty for distance
         # This should ideally cluster close frames with similar frequencies together, allowing for an identification of the phonemes/words
-        adjacency_matrix = similarity_function(mfcc, num_frames, alpha=alpha, beta=beta)
+        similarity_matrix = similarity_function(mfcc, num_frames, alpha=alpha, beta=beta)
+        adjacency_matrix = tf.where(similarity_matrix >= threshold, similarity_matrix, adjacency_matrix)
 
     
     else:
@@ -61,7 +63,6 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
 
 
 
-#TODO: alpha and beta are best to be tuned on a validation set
 def similarity_function(mfccs, num_frames, alpha, beta):
 
     # Take as input the MFCCs of a single audio file (not batched)
@@ -113,3 +114,35 @@ def visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix"):
     plt.ylabel('Frame Index')
     plt.tight_layout()
     plt.show()
+
+
+
+#TODO: fix this function, you need to make it for a TENSOR graph, not a NteworkX graph
+"""def visualize_graph(G, pos=None):
+    Visualize the graph
+    
+    Parameters:
+    - G: NetworkX graph
+    - pos: optional pre-computed positions
+
+    plt.figure(figsize=(12, 8))
+    
+    # If no position provided, use spring layout
+    if pos is None:
+        pos = nx.spectral_layout(G)
+    # Spectral layout may reveal underlying structural properties of the graph, but it's more computationally expensive than other layouts.
+    # Alternative: spring_layout() for a force-directed layout (attractive forces between connected nodes, repulsive forces between all nodes)
+    
+    # Draw nodes
+    nx.draw_networkx_nodes(G, pos, node_color='lightblue', 
+                            node_size=50)
+    
+    # Draw edges
+    nx.draw_networkx_edges(G, pos, alpha=0.5)
+    
+    plt.title("Speech Feature Graph")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()"
+    ""
+    """
