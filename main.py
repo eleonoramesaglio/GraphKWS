@@ -9,6 +9,7 @@ import tensorflow as tf
 
 
 
+
 def main():
 
     SAMPLE_RATE = 16000 # given in the dataset
@@ -39,6 +40,8 @@ def main():
 
     # See in utils data for examples on adding noise, padding etc. (which we can show in the presentation ; do a .ipynb)
 
+
+    
     # noise = True to match 2015 google paper ; possibly do a comparison with noise = False
     train_ds, val_ds, test_ds = utils_data.create_tf_dataset(train_files, train_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
@@ -69,12 +72,12 @@ def main():
 
 
 
-    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', window_size=5)
+    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='window', window_size=5)
 
 
     
     # Visualize the adjacency matrix
-    utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
+   # utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
 
 
     # Since some of our adjacency matrix modes will have a different adjacency matrix for each MFCC,
@@ -85,9 +88,9 @@ def main():
 
     # use lambda because we want to apply the function to each element of the dataset, which is a tuple (mfcc, label) and we have additional 
     # parameters in our create_adjacency_matrix function
-    train_ds = train_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
-    val_ds = val_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
-    test_ds = test_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
+    train_ds = train_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='window', window_size=5))
+    val_ds = val_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='window', window_size=5))
+    test_ds = test_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='window', window_size=5))
 
     # Check the shape of the dataset
     for mfcc, adjacency_matrix, label in train_ds.take(1):
@@ -105,7 +108,7 @@ def main():
     print(f"Graph example: {graph_example}")
     print("Edges:", graph_example.edge_sets["connections"].adjacency)
 
-    utils_graph.visualize_graph(graph_example, title="Graph Example")
+    #utils_graph.visualize_graph(graph_example, title="Graph Example")
 
 
 
@@ -118,14 +121,36 @@ def main():
 
     # Now batch
 
-    train_ds = train_ds.batch(32).prefetch(tf.data.AUTOTUNE)
-    val_ds = val_ds.batch(32).prefetch(tf.data.AUTOTUNE)
-    test_ds = test_ds.batch(32).prefetch(tf.data.AUTOTUNE)
+    BATCH_SIZE = 32
+    train_ds = train_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+    val_ds = val_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+    test_ds = test_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
+    # TODO : look for file input & parsing https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/guide/input_pipeline.md
+    # TODO : possibly check graph schema tutorial : https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/guide/data_prep.md
+    # TODO : scale MFCCs  !!!! for NNs to work correctly 
+    # TODO : look at base_gnn code and understand some steps, implement GCN, GAT etc.
     # Check the shape of the dataset
     for graph, label in train_ds.take(1):
         print(f"Graph shape: {graph.shape}")
         print(f"Label shape: {label.shape}")
+        print(label)
+        
+        # We need to get the graphs_spec for our model input
+        graphs_spec = graph.spec 
+
+    # Note that we actually have 35 classes !!! not like written in project B1
+    base_model = base_gnn.base_gnn_model(graph_tensor_specification = graphs_spec)
+
+    print(base_model.summary())
+
+    history = base_gnn.train(model = base_model,
+                             train_ds = train_ds,
+                             val_ds = val_ds,
+                             epochs = 5,
+                             batch_size = BATCH_SIZE)
+
+
     
 
 
