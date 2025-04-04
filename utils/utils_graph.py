@@ -216,8 +216,17 @@ def visualize_graph(G, pos, title):
     if pos is None:
         pos = nx.random_layout(G, seed = 123)
 
+    # Define the node colors
+    node_colors = []
+    node_color_map = ['lightblue', 'lightgreen', 'lavender', 'lightpink', 'lightyellow']
+
+    # Assign colors: first 20 nodes get the first color, next 20 get the second color, etc.
+    for i, node in enumerate(sorted(G.nodes())):
+        color_index = color_index = (i // 20) % len(node_color_map)
+        node_colors.append(node_color_map[color_index])
+
     # Draw the graph
-    nx.draw(G, pos, node_size=500, node_color='lightblue', edge_color='grey', font_size=10, font_weight='bold')
+    nx.draw(G, pos, node_color= node_colors, edge_color='grey', font_size=10, font_weight='bold')
 
     # Add custom labels (frames from 1 to 98)
     custom_labels = {node: str(int(node) + 1) for node in G.nodes()}
@@ -239,8 +248,17 @@ def visualize_graph_with_heatmap(G, pos, title):
     if pos is None:
         pos = nx.random_layout(G, seed = 123)
 
+    # Define the node colors
+    node_colors = []
+    node_color_map = ['lightblue', 'lightgreen', 'lavender', 'lightpink', 'lightyellow']
+
+    # Assign colors: first 20 nodes get the first color, next 20 get the second color, etc.
+    for i, node in enumerate(sorted(G.nodes())):
+        color_index = color_index = (i // 20) % len(node_color_map)
+        node_colors.append(node_color_map[color_index])
+
     # Draw the graph
-    nx.draw_networkx_nodes(G, pos, node_color='lightblue')
+    nx.draw_networkx_nodes(G, pos, node_color=node_colors)
 
     # Add custom labels (frames from 1 to 98)
     custom_labels = {node: str(int(node) + 1) for node in G.nodes()}
