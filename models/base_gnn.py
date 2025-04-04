@@ -140,7 +140,7 @@ def base_gnn_model(
     Base GNN Model :
 
     - We have n_frames many nodes and each pack the MFCCs as features 
-    - The adjacency matrix is solely 1 or 0 ; it represents connections based on a sliding temporal window
+    - The adjacency matrix is solely 0 and 1
 
     graph_tensor_specification : the "description" of the input graph 
     initial_nodes_mfccs_layer_dims, initial_edges_weights_layer_dims : the initial dimensions for encoding of features
@@ -223,15 +223,40 @@ def base_gnn_model(
         return result 
     
 
-
-    # TODO : understand this step ! # and add own convolution function for edge weight multiplication
+    # Without edge weights
+    # TODO: When we will have convolution_with_weights, this function will be maybe not needed:
+    # If we have a unweighted adjacency matrix (window case), the function convolution_with_weights will return the same result as the normal convolution
+    # If instead we have a weighted adjacency matrix, convolution_with_weights implements a sort of "attention mechanism", giving more importance
+    # to the edges with higher weights.
     def convolution(message_dim, receiver_tag):
         return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag)
     
+    # Function: AGGREGATION
+    # The convolution function is used to AGGREGATE messages from the neighbors of a node to update its state.
+    # There are two functions deciding the type of aggregation: reduce_type and combine_type.
+    # The reduce_type specifies how to combine the messages from the neighbors (e.g., sum, mean, max).
+    # The combine_type is instead used when there are multiple messages (deriving from multiple features) from the same neighbor.
+    # It decides how to aggregate these messages (usually they are concatenated) before passing them to the receiver node.
+    # The receiver_tag specifies the node that will receive the aggregated messages.
+    
+    #TODO: With edge weights
+    def convolution_with_weights(message_dim, receiver_tag):
+        pass
 
-    # TODO : understand this step ! + add other possiblities (codes)
+
     def next_state(next_state_dim, use_layer_normalization):
         return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+    
+    #TODO: define other possibilities for the next state
+    # Note: maybe we do not need to define a convolution_with_weights function, but in the aggregation function we stack the node features in a matrix and then
+    # in the next_state function we multiply such matrix by the weights of the edges. This is equivalent to a convolution with weights.
+
+    # Function: COMPUTE NEXT STATE
+    # The next_state function is used to update the state of a node after aggregating messages from its neighbors.
+    # 1. Concatenates the node's current state with the aggregated messages
+    # 2. Processes them through a dense layer with regularization & normalization to produce the new state.
+    # 3. Returns the new state for the node, with dimensions specified by next_state_dim.
+    # This function is then used in the NodeSetUpdate layer to update the node states.
 
    
     
@@ -300,11 +325,13 @@ def base_gnn_model(
     # TODO : not needed to do , but could be helpful ? right now we just aggregate all the node (?) features
     # TODO : in the end, maybe better to learn over all epochs
 
-
+    # Context node (/master node) is the "global" node of the graph, which is used to aggregate information from all nodes
 
     pooled_features = tfgnn.keras.layers.Pool(
-        tfgnn.CONTEXT, "mean", node_set_name = "frames")(graph)
+        tfgnn.CONTEXT, "mean", node_set_name = "frames")(graph)   # maybe mean is not the best choice, consider also sum/max
     logits = tf.keras.layers.Dense(num_classes)(pooled_features)
+
+
     
     model = tf.keras.Model(input_graph, logits)
 
