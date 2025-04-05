@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tensorflow_gnn as tfgnn
 import numpy as np 
+from tensorflow_gnn.models.gcn import gcn_conv
 
 
 
@@ -153,15 +154,30 @@ def base_gnn_model(
     input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
 
     # Convert to scalar GraphTensor
+    # TODO : is this even needed ? what does it do ?
     graph = tfgnn.keras.layers.MapFeatures()(input_graph)
 
     is_batched = (graph.spec.rank == 1)
 
+
+    ### IMPORTANT: All TF-GNN modeling code assumes a GraphTensor of shape []
+    ### in which the graphs of the input batch have been merged to components of
+    ### one contiguously indexed graph. There are no edges between components,
+    ### so no information flows between them.
     if is_batched:
         batch_size = graph.shape[0]
+        #merge all graphs of the batch into one, contiguously indexed graph.
+        #  The resulting GraphTensor has shape [] (i.e., is scalar) and its features h
+        # ave the shape [total_num_items, *feature_shape] where total_num_items is the sum 
+        # of the previous num_items per batch element. At that stage, the GraphTensor is ready
+        #  for use with the TF-GNN model-building code, but it is no longer easy to split it up.
+        # https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/guide/graph_tensor.md
+        # this means our nodes [32,98,39] are now [32*98,39] = [3136,39]
         graph = graph.merge_batch_to_components()
 
 
+    # TODO : understand : the initial node state is also learnt during training ? should be, but then is 64 dims ever used
+    # or basically one the message_passing_dim all the time ? 
     # Define the initial hidden states for the nodes
     def set_initial_node_state(node_set,node_set_name):
         """
@@ -228,6 +244,22 @@ def base_gnn_model(
     # If we have a unweighted adjacency matrix (window case), the function convolution_with_weights will return the same result as the normal convolution
     # If instead we have a weighted adjacency matrix, convolution_with_weights implements a sort of "attention mechanism", giving more importance
     # to the edges with higher weights.
+
+    #This layer can compute a convolution over an edge set by applying the
+    #  passed-in message_fn (dense(message_dim) here) for all edges on the 
+    # concatenated inputs from some or all of: the edge itself, the sender node, and the receiver node, followed by pooling to the receiver node.
+
+
+    # message_fn : layer that computes the individual messages after they went through the "combine_type" aggregation (i.e. here rn from our target & source node the embeddings?)
+    # combine_type : defines how to combine the messages before passing them through the message layer (i.e concat, sum (element-wise) etc.)
+    # --> this combines right now the node features (of target & source node of the corresponding edge //
+    # NO : just the target or source node, depending opn what the receiver tag is (so doesn't use the information of the node
+    # that it is sending to)) and also edge features etc. if they are any (just combines all of them)
+    # reduce_type : Specifices how to combine the messages (of ALL the nodes) after passing them through the message layer (max/min/mean...)
+    # receiver_tag : defines the receiver of those messages (i.e. here in our implementation which node receives them)
+    # receiver_tag  : could also be context node here and then we pool information into the context node!!! read the documentation on simpleconv!
+
+    # TODO : we can design our own convolution function !
     def convolution(message_dim, receiver_tag):
         return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag)
     
@@ -244,11 +276,12 @@ def base_gnn_model(
         pass
 
 
+    # TODO : we can design our own next state function !
     def next_state(next_state_dim, use_layer_normalization):
         return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
     
     #TODO: define other possibilities for the next state
-    # Note: maybe we do not need to define a convolution_with_weights function, but in the aggregation function we stack the node features in a matrix and then
+    # Note: maybe we do not need to define a convolution_with_weights function, but in the convolution function we stack the node features in a matrix and then
     # in the next_state function we multiply such matrix by the weights of the edges. This is equivalent to a convolution with weights.
 
     # Function: COMPUTE NEXT STATE
@@ -304,6 +337,11 @@ def base_gnn_model(
     #For more information on defining your own GNN models (including those with edge and context states), 
     # please refer to the [TF-GNN Modeling Guide](https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/guide/gnn_modeling.md).
 
+
+    # n_message_passing_layers defines from how far in neighbour terms we are getting information (i.e. when 4, this means any node in the graph
+    # accumulates information from 4 neighbours away (. -- . -- . -- . -- .) : Node 1 has some info of Node 5 embedded in itself.)
+
+    # Note that initially, the nodes are (3136,39) and after the first message passing layer, they are (3136,128) !
     for i in range(n_message_passing_layers):
         graph = tfgnn.keras.layers.GraphUpdate(
             node_sets = {
@@ -327,6 +365,161 @@ def base_gnn_model(
 
     # Context node (/master node) is the "global" node of the graph, which is used to aggregate information from all nodes
 
+
+    # Take all the 98 learnt node features (i.e. 64 dim right now # TODO : understand, is it 128 or 64 ?), aggregate them using mean (each on its own) --> 98 dim vector
+    # which is then representing the context vector (i.e. the "graph node")
+    pooled_features = tfgnn.keras.layers.Pool(
+        tfgnn.CONTEXT, "mean", node_set_name = "frames")(graph)   # maybe mean is not the best choice, consider also sum/max
+    logits = tf.keras.layers.Dense(num_classes)(pooled_features)
+
+
+    
+    model = tf.keras.Model(input_graph, logits)
+
+
+    return model 
+
+
+# TODO 
+def base_gnn_model_using_gcn(
+        graph_tensor_specification,
+        initial_nodes_mfccs_layer_dims = 64,
+        initial_edges_weights_layer_dims = [16],
+        message_dim = 128,
+        next_state_dim = 128,
+        num_classes = 35,
+        l2_reg_factor = 6e-6,
+        dropout_rate = 0.2,
+        use_layer_normalization = True,
+        n_message_passing_layers = 4,
+
+
+        ):
+    
+    """
+
+    # TODO 
+    In this approach, instead of using SimpleConv() for the message passing, we use GCN layers!
+    Note that this only works with homogeneous graphs ; thus we can not directly use our similarity
+    approach (or we need to modify) , and we do it with our windows approach
+
+    """
+
+
+    # Input is the graph structure 
+    input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
+
+    # Convert to scalar GraphTensor
+    graph = tfgnn.keras.layers.MapFeatures()(input_graph)
+
+    is_batched = (graph.spec.rank == 1)
+
+    if is_batched:
+        batch_size = graph.shape[0]
+        graph = graph.merge_batch_to_components()
+
+
+
+    def set_initial_node_state(node_set,node_set_name):
+        """
+        Initialize hidden states for nodes in the graph.
+        
+        Args:
+            node_set: A dictionary containing node features
+            node_set_name: The name of the node set (e.g., "frames")
+            
+        Returns:
+            A transformation function applied to the node features
+        """
+        if node_set_name == "frames":
+            # Apply a dense layer to transform MFCC features into hidden states
+            # Instead of just one dense layer , we can also directly use dropout etc. here (if we wish so) 
+            return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
+                node_set["features"]  # This would be your mfcc_static features
+            )
+        else:
+            # Handle any other node types
+            raise ValueError(f"Unknown node set: {node_set_name}")
+            
+    def set_initial_edge_state(edge_set, edge_set_name):
+        """
+        Initialize hidden states for edges in the graph
+        
+        
+        """
+        # TODO : can be implemented if we want 
+        pass 
+
+
+    def set_initial_context_state():
+        """
+        Initialize hidden state for the context of the graph (i.e. the whole graph)
+        
+        """
+        # TODO : can be implemented if we want
+        pass
+        
+
+    graph = tfgnn.keras.layers.MapFeatures(
+        node_sets_fn = set_initial_node_state, name = 'init_states')(graph)
+    
+    # Let us now build some basic building blocks for our model
+    def dense(units, use_layer_normalization = False):
+        """ Dense layer with regularization (L2 & Dropout) & normalization"""
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+        result = tf.keras.Sequential([
+            tf.keras.layers.Dense(
+                units,
+                activation = "relu",
+                use_bias = True,
+                kernel_regularizer = regularizer,
+                bias_regularizer = regularizer),
+            tf.keras.layers.Dropout(dropout_rate)])
+        if use_layer_normalization:
+            result.add(tf.keras.layers.LayerNormalization())
+        return result 
+    
+
+    
+    def gcn_convolution(message_dim, receiver_tag):
+        # Here we now use a GCN layer 
+        # TODO : don't understand how to add dropout ; I think
+        # we would need to add it into the GCNConv class itself, since
+        # we are not calling a keras layer here, but the whole class 
+        # (i.e. we cannot use the sequential function like normally)
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+
+
+        return  gcn_conv.GCNConv(
+            units = message_dim,
+            receiver_tag= receiver_tag,
+            activation = "relu",
+            use_bias = True,
+            kernel_regularizer = regularizer,
+            add_self_loops = False
+        )
+
+    
+
+
+    # TODO : we can design our own next state function !
+    def next_state(next_state_dim, use_layer_normalization):
+        return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+    
+
+
+    for i in range(n_message_passing_layers):
+        graph = tfgnn.keras.layers.GraphUpdate(
+            node_sets = {
+                "frames" : tfgnn.keras.layers.NodeSetUpdate(
+                    {"connections" : (gcn_convolution(message_dim, tfgnn.SOURCE))},
+                next_state(next_state_dim, use_layer_normalization)
+                )
+            }
+        )(graph)
+
+
+
     pooled_features = tfgnn.keras.layers.Pool(
         tfgnn.CONTEXT, "mean", node_set_name = "frames")(graph)   # maybe mean is not the best choice, consider also sum/max
     logits = tf.keras.layers.Dense(num_classes)(pooled_features)
@@ -340,26 +533,195 @@ def base_gnn_model(
 
 
 
-def train(model, train_ds, val_ds, epochs = 50, batch_size = 32, use_callbacks = True):
+
+def base_gnn_with_context_node_model(
+        graph_tensor_specification,
+        initial_nodes_mfccs_layer_dims = 64,
+        initial_edges_weights_layer_dims = [16],
+        message_dim = 128,
+        next_state_dim = 128,
+        num_classes = 35,
+        l2_reg_factor = 6e-6,
+        dropout_rate = 0.2,
+        use_layer_normalization = True,
+        n_message_passing_layers = 4,
+
+
+        ):
+    
+    """
+
+    Here, we additionally add a context node ("Master node") to the graph, which is used to aggregate information from all nodes.
+    In the Base GNN model, we simply aggregated the final information for the master node representation. Here, we aim to
+    aggregate the context in every message passing layer.
+
+
+    This section discusses the use of a context feature for a hidden state that gets updated with each GraphUpdate.
+
+    Why would you do that?
+
+    If your task is a prediction about the whole graph, a context state that represents the relevant properties of the graph is a plausible input to the prediction 
+    head of your model. Maintaining that state throughout the GNN is potentially more expressive than a single pooling of node states at the end of the GNN.
+    A context state that gets fed back into node state updates could condition them on some global characteristics of the graph.
+
+
+
+    """
+
+    # Input is the graph structure 
+    input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
+
+    # Convert to scalar GraphTensor
+    graph = tfgnn.keras.layers.MapFeatures()(input_graph)
+
+    is_batched = (graph.spec.rank == 1)
+
+    if is_batched:
+        batch_size = graph.shape[0]
+        graph = graph.merge_batch_to_components()
+        
+
+
+    # Define the initial hidden states for the nodes
+    def set_initial_node_state(node_set,node_set_name):
+        """
+        Initialize hidden states for nodes in the graph.
+        
+        Args:
+            node_set: A dictionary containing node features
+            node_set_name: The name of the node set (e.g., "frames")
+            
+        Returns:
+            A transformation function applied to the node features
+        """
+        if node_set_name == "frames":
+            # Apply a dense layer to transform MFCC features into hidden states
+            # Instead of just one dense layer , we can also directly use dropout etc. here (if we wish so) 
+            return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
+                node_set["features"]  # This would be your mfcc_static features
+            )
+        else:
+            # Handle any other node types
+            raise ValueError(f"Unknown node set: {node_set_name}")
+            
+    def set_initial_edge_state(edge_set, edge_set_name):
+        """
+        Initialize hidden states for edges in the graph
+        
+        
+        """
+        # TODO : can be implemented if we want 
+        pass 
+
+
+    def set_initial_context_state(context):
+        """
+        Initialize hidden state for the context of the graph (i.e. the whole graph)
+        
+        """
+
+        # Option 1 : initialize the context node with a zero vector
+        return tfgnn.keras.layers.MakeEmptyFeature()(context)
+
+    
+        
+        # Option 2: Initialize with a pooled representation of all nodes (in their initial state)
+     #   pooled = tfgnn.keras.layers.Pool(
+     #       tfgnn.CONTEXT, "mean", node_set_name="frames")(graph)
+     #   return tf.keras.layers.Dense(next_state_dim, activation="relu")(pooled)
+        
+
+    graph = tfgnn.keras.layers.MapFeatures(
+        node_sets_fn = set_initial_node_state,
+        context_fn = set_initial_context_state, name = 'init_states')(graph) # added initial context state 
+    
+    # Let us now build some basic building blocks for our model
+    def dense(units, use_layer_normalization = False):
+        """ Dense layer with regularization (L2 & Dropout) & normalization"""
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+        result = tf.keras.Sequential([
+            tf.keras.layers.Dense(
+                units,
+                activation = "relu",
+                use_bias = True,
+                kernel_regularizer = regularizer,
+                bias_regularizer = regularizer),
+            tf.keras.layers.Dropout(dropout_rate)])
+        if use_layer_normalization:
+            result.add(tf.keras.layers.LayerNormalization())
+        return result 
+    
+
+    def convolution(message_dim, receiver_tag):
+        return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag)
+    
+
+    
+    #TODO: With edge weights
+    def convolution_with_weights(message_dim, receiver_tag):
+        pass
+
+
+    def next_state(next_state_dim, use_layer_normalization):
+        return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+    
+    # after the first message passing layer, nodes are (3136,128) and context node is (32,128)
+    for i in range(n_message_passing_layers):
+        graph = tfgnn.keras.layers.GraphUpdate(
+            node_sets = {
+                "frames" : tfgnn.keras.layers.NodeSetUpdate(
+                    {"connections" : convolution(message_dim, tfgnn.SOURCE)},
+                next_state(next_state_dim, use_layer_normalization)
+                )
+            },
+            # Here we just do an easy implementation : in each message passing layer, take all the current node features
+            # and pool them using the mean
+            context = tfgnn.keras.layers.ContextUpdate(
+                {
+                    "frames" : tfgnn.keras.layers.Pool(tfgnn.CONTEXT, "mean", node_set_name = "frames")
+                },
+                next_state(next_state_dim, use_layer_normalization)
+            
+        ))(graph)
+
+
+
+    # Get the current context state (has shape (batch_size, 128) , where 128 is the message_passing_dimension)
+    # This represents the master node, which is updated in each message passing layer !
+    context_state = graph.context.features['hidden_state']
+
+    logits = tf.keras.layers.Dense(num_classes)(context_state)
+
+
+    
+    model = tf.keras.Model(input_graph, logits)
+
+
+    return model 
+
+
+
+def train(model, train_ds, val_ds, epochs = 50, batch_size = 32, use_callbacks = True, learning_rate = 0.001):
 
     # Define callbacks
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
-            monitor='val_accuracy',
+            monitor='val_sparse_categorical_acurracy',
             patience=10,
             restore_best_weights=True
         ),
-        tf.keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.5,
-            patience=5,
-            min_lr=1e-5
-        )
+     #   tf.keras.callbacks.ReduceLROnPlateau(
+     #       monitor='val_loss',
+     #       factor=0.5,
+     #       patience=5,
+     #       min_lr=1e-5
+     #   )
     ]
 
 
     model.compile(
-        optimizer = tf.keras.optimizers.Adam(learning_rate = 0.001),
+        # legacy due to running on mac m1
+        optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = learning_rate),
         # using sparse categorical bc our labels are encoded as numbers and not one-hot
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True),
         metrics = [tf.keras.metrics.SparseCategoricalAccuracy(),

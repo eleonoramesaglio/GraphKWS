@@ -111,7 +111,7 @@ def main():
 
     networkx_graph = utils_graph.convert_tensor_to_networkx(graph_example)
     pos = utils_graph.node_layout(networkx_graph)
-    utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
+   # utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
 
 
 
@@ -142,9 +142,9 @@ def main():
         # We need to get the graphs_spec for our model input
         graphs_spec = graph.spec 
 
-    """
+    
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_model(graph_tensor_specification = graphs_spec)
+    base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec)
 
     print(base_model.summary())
 
@@ -152,9 +152,10 @@ def main():
                              train_ds = train_ds,
                              val_ds = val_ds,
                              epochs = 5,
-                             batch_size = BATCH_SIZE)
+                             batch_size = BATCH_SIZE,
+                             learning_rate = 0.001)
 
-"""
+
 
 
 
