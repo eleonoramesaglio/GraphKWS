@@ -10,6 +10,8 @@ import tensorflow as tf
 
 
 
+
+
 def main():
 
     SAMPLE_RATE = 16000 # given in the dataset
@@ -144,7 +146,7 @@ def main():
 
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec)
+    base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec)
 
     print(base_model.summary())
 

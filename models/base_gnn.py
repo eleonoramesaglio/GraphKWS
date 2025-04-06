@@ -2,7 +2,8 @@ import tensorflow as tf
 import tensorflow_gnn as tfgnn
 import numpy as np 
 from tensorflow_gnn.models.gcn import gcn_conv
-
+#tf.config.run_functions_eagerly(True) 
+#tf.data.experimental.enable_debug_mode()
 
 
 
@@ -150,6 +151,8 @@ def base_gnn_model(
     """
 
 
+    
+
     # Input is the graph structure 
     input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
 
@@ -158,6 +161,25 @@ def base_gnn_model(
     graph = tfgnn.keras.layers.MapFeatures()(input_graph)
 
     is_batched = (graph.spec.rank == 1)
+
+
+    """
+    edge_sets = graph.edge_sets 
+
+
+    for edge_set_name, edge_set in edge_sets.items():
+        source_indicies = edge_set.adjacency.source
+        target_indices = edge_set.adjacency.target
+  
+        edge_features = {}
+
+        for feature_name, feature_value in edge_set.features.items():
+            edge_features[feature_name] = feature_value 
+
+        print('h')
+    """
+
+
 
 
     ### IMPORTANT: All TF-GNN modeling code assumes a GraphTensor of shape []
@@ -174,6 +196,9 @@ def base_gnn_model(
         # https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/guide/graph_tensor.md
         # this means our nodes [32,98,39] are now [32*98,39] = [3136,39]
         graph = graph.merge_batch_to_components()
+
+
+
 
 
     # TODO : understand : the initial node state is also learnt during training ? should be, but then is 64 dims ever used
@@ -261,6 +286,9 @@ def base_gnn_model(
 
     # TODO : we can design our own convolution function !
     def convolution(message_dim, receiver_tag):
+
+
+
         return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag)
     
     # Function: AGGREGATION
@@ -799,56 +827,84 @@ def base_gnn_weighted_model(
             result.add(tf.keras.layers.LayerNormalization())
         return result 
     
+
+
+
+    """
+    class WeightedSumConvolution(tf.keras.layers.Layer):
+        '''Weighted sum of source nodes states.'''
+
+        def call(self, graph: tfgnn.GraphTensor,
+                edge_set_name: tfgnn.EdgeSetName) -> tfgnn.Field:
+            messages = tfgnn.broadcast_node_to_edges(
+                graph,
+                edge_set_name,
+                tfgnn.SOURCE,
+                feature_name=tfgnn.DEFAULT_STATE_NAME)
+            weights = graph.edge_sets[edge_set_name]['weight']
+            weighted_messages = tf.expand_dims(weights, -1) * messages
+            pooled_messages = tfgnn.pool_edges_to_node(
+                graph,
+                edge_set_name,
+                tfgnn.TARGET,
+                reduce_type='sum',
+                feature_value=weighted_messages)
+            return pooled_messages
+    """
+
+    
     
 
     
     # Message passing with edge weights
 
-    def WeightedConv(message_dim, receiver_tag, reduce_type):
+    # Define a custom class object for the weighted convolution
+    # This class will inherit from tf.keras.layers.AnyToAnyConvolutionBase
+    
 
-        # Define a custom class object for the weighted convolution
-        # This class will inherit from tf.keras.layers.AnyToAnyConvolutionBase
+
+    """
+    class WeightedConv(tf.keras.layers.AnyToAnyConvolutionBase):
+
+        def __init__(self, message_fn, **kwargs):
+            super().__init__(**kwargs)
+            self._message_fn = message_fn
+
+        def get_config(self):
+            return dict(units=self._message_fn.units, **super().get_config())
         
-        class WeightedConv(tf.keras.layers.AnyToAnyConvolutionBase):
-
-            def __init__(self, message_fn, **kwargs):
-                super().__init__(**kwargs)
-                self._message_fn = message_fn
-
-            def get_config(self):
-                return dict(units=self._message_fn.units, **super().get_config())
+        # This function is called to compute the messages and aggregate them
+        def convolve(
+                self, *,
+                sender_node_input, sender_edge_input,
+                broadcast_from_sender_node, pool_to_receiver):
             
-            # This function is called to compute the messages and aggregate them
-            def convolve(
-                    self, *,
-                    sender_node_input, sender_edge_input,
-                    broadcast_from_sender_node, pool_to_receiver):
-                
-                # Initialize
-                inputs = []
-                # Store the node features of the sender node
-                if sender_node_input is not None:
-                    inputs.append(broadcast_from_sender_node(sender_node_input))
+            # Initialize
+            inputs = []
+            # Store the node features of the sender node
+            if sender_node_input is not None:
+                inputs.append(broadcast_from_sender_node(sender_node_input))
+
+            # Get the messages
+            messages = self._message_fn(tf.concat(inputs, axis=-1))
+
+            # Extract edge weights from sender_edge_input
+            if sender_edge_input is not None:
+                edge_weights = sender_edge_input
     
-                # Get the messages
-                messages = self._message_fn(tf.concat(inputs, axis=-1))
+                # Apply weights to messages
+                weighted_messages = messages * edge_weights
     
-                # Extract edge weights from sender_edge_input
-                if sender_edge_input is not None:
-                    edge_weights = sender_edge_input
-      
-                    # Apply weights to messages
-                    weighted_messages = messages * edge_weights
-      
-                    # Return weighted sum to receiver nodes
-                    return pool_to_receiver(weighted_messages, reduce_type=reduce_type)
-                
-                else:
-                    # Fallback to regular sum if no edge weights are provided
-                    return pool_to_receiver(messages, reduce_type=reduce_type)
+                # Return weighted sum to receiver nodes
+                return pool_to_receiver(weighted_messages, reduce_type=reduce_type)
             
-                
-        return WeightedConv()
+            else:
+                # Fallback to regular sum if no edge weights are provided
+                return pool_to_receiver(messages, reduce_type=reduce_type)
+        
+            
+    return WeightedConv()
+    """
     
 
 
@@ -918,8 +974,41 @@ def base_gnn_weighted_model(
 
 
    
-    def convolution_with_weights(message_dim, receiver_tag):
-        return tfgnn.keras.layers.WeightedConv(dense(message_dim), reduce_type="sum", receiver_tag = receiver_tag)
+    class WeightedSumConvolution(tf.keras.layers.Layer):
+        # TODO : reciever tag is not used now, since we set SOURCE & target ourselves,
+        # need to fix that !
+        # TODO : understand if this is the correct way ! maybe with the correct debug mode
+        def __init__(self, message_dim, receiver_tag):
+            super().__init__()
+            self.message_dim = message_dim
+            self.receiver_tag = receiver_tag
+            self.dense = tf.keras.layers.Dense(message_dim, activation="relu")
+        
+        def call(self, graph, edge_set_name):
+            # Get node states
+            messages = tfgnn.broadcast_node_to_edges(
+                graph,
+                edge_set_name,
+                tfgnn.SOURCE,
+                feature_name="hidden_state")
+            
+            # Get edge weights
+            weights = graph.edge_sets[edge_set_name].features['weights']
+            
+            # Apply weights to messages
+            weighted_messages = tf.expand_dims(weights, -1) * messages
+            
+            # Pool messages to target nodes
+            pooled_messages = tfgnn.pool_edges_to_node(
+                graph,
+                edge_set_name,
+                tfgnn.TARGET,
+                reduce_type='sum',
+                feature_value=weighted_messages)
+            
+            # Transform pooled messages
+            return self.dense(pooled_messages)
+            
     
 
     #TODO: Else we can try to define a reduce_type(messages, adjacency_matrix) function that gives back the weighted sum of the messages with the edge weights
@@ -938,7 +1027,7 @@ def base_gnn_weighted_model(
         graph = tfgnn.keras.layers.GraphUpdate(
             node_sets = {
                 "frames" : tfgnn.keras.layers.NodeSetUpdate(
-                    {"connections" : convolution_with_weights(message_dim, tfgnn.SOURCE)},
+                    {"connections" : WeightedSumConvolution(message_dim, tfgnn.SOURCE)},
                 next_state(next_state_dim, use_layer_normalization)
                 )
             }
@@ -984,7 +1073,8 @@ def train(model, train_ds, val_ds, epochs = 50, batch_size = 32, use_callbacks =
         # using sparse categorical bc our labels are encoded as numbers and not one-hot
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True),
         metrics = [tf.keras.metrics.SparseCategoricalAccuracy(),
-                   tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True)]
+                   tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True)],
+       # run_eagerly = True
     )
 
 
