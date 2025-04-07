@@ -601,6 +601,7 @@ def base_gnn_with_context_node_model(
     # Input is the graph structure 
     input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
 
+
     # Convert to scalar GraphTensor
     graph = tfgnn.keras.layers.MapFeatures()(input_graph)
 
@@ -812,7 +813,7 @@ def base_gnn_weighted_model(
 
     
     # Let us now build some basic building blocks for our model
-    def dense(units, use_layer_normalization = False):
+    def dense(units, use_layer_normalization = False, normalization_type = "normal"):
         """ Dense layer with regularization (L2 & Dropout) & normalization"""
         regularizer = tf.keras.regularizers.l2(l2_reg_factor)
         result = tf.keras.Sequential([
@@ -824,17 +825,25 @@ def base_gnn_weighted_model(
                 bias_regularizer = regularizer),
             tf.keras.layers.Dropout(dropout_rate)])
         if use_layer_normalization:
-            result.add(tf.keras.layers.LayerNormalization())
+            if normalization_type == 'normal':
+                result.add(tf.keras.layers.LayerNormalization())
+            elif normalization_type == 'group':
+                result.add(tf.keras.layers.GroupNormalization(message_dim))
         return result 
     
 
 
-    # With edge weights
-   
+    
+
+    # Message passing with edge weights
+
+    # Define a custom class object for the weighted convolution
+    # This class will inherit from tf.keras.layers.AnyToAnyConvolutionBase
+    
+
+
     class WeightedSumConvolution(tf.keras.layers.Layer):
-        # TODO : reciever tag is not used now, since we set SOURCE & target ourselves,
-        # need to fix that !
-        # TODO : understand if this is the correct way ! maybe with the correct debug mode
+
         def __init__(self, message_dim, receiver_tag):
             super().__init__()
             self.message_dim = message_dim
@@ -848,7 +857,7 @@ def base_gnn_weighted_model(
                 graph,
                 edge_set_name,
                 self.sender_tag,
-                feature_name="hidden_state")
+                feature_name="hidden_state") # Take the hidden state of the node
             
             # Get edge weights
             weights = graph.edge_sets[edge_set_name].features['weights']
@@ -907,12 +916,12 @@ def base_gnn_weighted_model(
 
 
 
-def train(model, train_ds, val_ds, epochs = 50, batch_size = 32, use_callbacks = True, learning_rate = 0.001):
+def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_callbacks = True, learning_rate = 0.001):
 
     # Define callbacks
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
-            monitor='val_sparse_categorical_acurracy',
+            monitor='val_sparse_categorical_accuracy',
             patience=10,
             restore_best_weights=True
         ),
@@ -930,8 +939,7 @@ def train(model, train_ds, val_ds, epochs = 50, batch_size = 32, use_callbacks =
         optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = learning_rate),
         # using sparse categorical bc our labels are encoded as numbers and not one-hot
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True),
-        metrics = [tf.keras.metrics.SparseCategoricalAccuracy(),
-                   tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True)],
+        metrics = [tf.keras.metrics.SparseCategoricalAccuracy()],
        # run_eagerly = True
     )
 
@@ -941,13 +949,17 @@ def train(model, train_ds, val_ds, epochs = 50, batch_size = 32, use_callbacks =
     else:
         history = model.fit(train_ds, validation_data = val_ds, epochs = epochs)
 
+
+    # Evaluate the model
+    test_measurements = model.evaluate(test_ds)
+
+
+    print(f"Test Loss : {test_measurements[0]:.2f},\
+          Test Sparse Categorical Accuracy : {test_measurements[1]:.2f}")
+
+
+
+
     return history 
-
-
-def eval_test(model, test_ds):
-    test_loss, test_measurements = model.evaluate(test_ds)
-
-
-    print(test_measurements)
 
 
