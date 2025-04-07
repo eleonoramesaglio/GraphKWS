@@ -982,14 +982,15 @@ def base_gnn_weighted_model(
             super().__init__()
             self.message_dim = message_dim
             self.receiver_tag = receiver_tag
-            self.dense = tf.keras.layers.Dense(message_dim, activation="relu")
+            self.sender_tag = tfgnn.SOURCE if receiver_tag == tfgnn.TARGET else tfgnn.TARGET
+            self.dense = dense(units = message_dim, use_layer_normalization = use_layer_normalization)
         
         def call(self, graph, edge_set_name):
             # Get node states
             messages = tfgnn.broadcast_node_to_edges(
                 graph,
                 edge_set_name,
-                tfgnn.SOURCE,
+                self.sender_tag,
                 feature_name="hidden_state")
             
             # Get edge weights
@@ -1002,7 +1003,7 @@ def base_gnn_weighted_model(
             pooled_messages = tfgnn.pool_edges_to_node(
                 graph,
                 edge_set_name,
-                tfgnn.TARGET,
+                self.receiver_tag,
                 reduce_type='sum',
                 feature_value=weighted_messages)
             
@@ -1027,7 +1028,7 @@ def base_gnn_weighted_model(
         graph = tfgnn.keras.layers.GraphUpdate(
             node_sets = {
                 "frames" : tfgnn.keras.layers.NodeSetUpdate(
-                    {"connections" : WeightedSumConvolution(message_dim, tfgnn.SOURCE)},
+                    {"connections" : WeightedSumConvolution(message_dim, tfgnn.TARGET)},
                 next_state(next_state_dim, use_layer_normalization)
                 )
             }
