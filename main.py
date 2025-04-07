@@ -6,6 +6,8 @@ from models import base_gnn
 import pandas as pd 
 import tensorflow as tf 
 
+# Get the tensorflow version
+print(f"Tensorflow version: {tf.__version__}")
 
 
 
@@ -47,7 +49,7 @@ def main():
     # noise = True to match 2015 google paper ; possibly do a comparison with noise = False
     train_ds, val_ds, test_ds = utils_data.create_tf_dataset(train_files, train_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                               batch_size = 32, mode = 'train', noise = True),\
+                                                               batch_size = 32, mode = 'train', noise = False),\
                                 utils_data.create_tf_dataset(val_files, val_labels,sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
                                                                batch_size = 32, mode = 'val'),\
@@ -126,7 +128,7 @@ def main():
 
     # Now batch
 
-    BATCH_SIZE = 32
+    BATCH_SIZE = 64
     train_ds = train_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
     val_ds = val_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
     test_ds = test_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
@@ -153,10 +155,10 @@ def main():
     history = base_gnn.train(model = base_model,
                              train_ds = train_ds,
                              val_ds = val_ds,
+                             test_ds = test_ds,
                              epochs = 5,
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
-
 
 
 
