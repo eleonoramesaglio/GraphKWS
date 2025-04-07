@@ -467,7 +467,7 @@ def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
     num_spectrogram_bins = tf.shape(spectrogram)[-1]
 
     # Define the frequency band we are intereted into:
-    min_frequency = 80  # to filter out some background noise, we look at frequencies from 80 ...
+    min_frequency = 100  # to filter out some background noise, we look at frequencies from 80 ...
     max_frequency = float(sample_rate/2)    # ... up to Nyquist frequency (8000 Hz in our case)
 
     # And the number of filters
