@@ -309,6 +309,9 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, no
         # Add the scaled noise to the signal
         wav = wav + scaled_noise
 
+    # Remove noise in the frequency domain
+    wav = noise_reduction(wav, noise_threshold=0.1, frame_length=frame_length, frame_step=frame_step)
+
     # Next, get the spectrogram of the audio file
     spectrogram, frame_step = get_spectrogram(wav)
     # Apply mel filterbanks
@@ -428,6 +431,56 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
     return ds
 
 
+
+def noise_reduction(wav, noise_threshold=0.1, frame_length = 400, frame_step = 160):
+
+    """
+    Reduce noise in frequency domain before Mel filterbank application.
+    
+    Parameters:
+    -----------
+    audio_signal : tf.Tensor
+        Input audio signal
+    noise_threshold : float, optional
+        Threshold for noise reduction (default 0.1)
+    frame_length : int, optional
+        FFT window size
+    frame_step : int, optional
+        Step size for FFT
+    
+    Returns:
+    --------
+    tf.Tensor
+        Noise-reduced audio signal
+    """
+    # Compute Short-Time Fourier Transform (STFT) (Time -> Frequency domain)
+    stft = tf.signal.stft(wav, frame_length=frame_length, frame_step=frame_step)
+    
+    # Compute magnitude and phase
+    magnitude = tf.abs(stft)
+    phase = tf.math.angle(stft)
+    
+    # Compute noise threshold
+    noise_floor = tf.reduce_mean(magnitude, axis=0)
+    
+    # Create a noise reduction mask
+    noise_mask = magnitude < (noise_floor * noise_threshold)
+    
+    # Filter out noise in magnitude spectrum (set it to zero)
+    cleaned_magnitude = tf.where(noise_mask, tf.zeros_like(magnitude), magnitude)
+    
+    # Reconstruct complex spectrum
+    cleaned_stft = tf.complex(cleaned_magnitude * tf.cos(phase), 
+                           cleaned_magnitude * tf.sin(phase))
+    
+    # Compute the Inverse STFT (Frequency -> Time domain)
+    cleaned_wav = tf.signal.inverse_stft(cleaned_stft, frame_length=frame_length, frame_step=frame_step, window_fn=tf.signal.hamming_window)
+    
+    return cleaned_wav
+
+
+
+
 def get_spectrogram(wav, sample_rate = 16000):
   # Taken partly from : https://www.tensorflow.org/tutorials/audio/simple_audio
 
@@ -442,12 +495,9 @@ def get_spectrogram(wav, sample_rate = 16000):
     # frame_step : defines the overlap of frames that we have. We take the standard
     # value of 10 ms --> 16.000 samples/second * 0.010s = 160 samples.
 
-
     frame_length = int(sample_rate * 0.025)  # 25 ms # like in lecture
-    frame_step = int(sample_rate * 0.010)  # 10 ms # like in lecture 
+    frame_step = int(sample_rate * 0.010)  # 10 ms # like in lecture
 
-
-    # TODO : what fft_length ? check : https://www.coursera.org/lecture/audio-signal-processing/stft-2-tjEQe
     spectrogram = tf.signal.stft(wav, frame_length= frame_length, frame_step= frame_step, fft_length= frame_length,
                         window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture (TODO: Eventually we can try different types of windows (e.g. Gaussian etc))
     # Obtain the magnitude of the STFT.
