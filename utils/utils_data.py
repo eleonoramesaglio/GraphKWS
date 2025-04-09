@@ -297,7 +297,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, no
         noise_power = tf.reduce_mean(tf.square(noise_segment))
         
         # Generate random SNR in the specified range
-        target_snr_db = random.uniform(min_snr_db, max_snr_db)
+        target_snr_db = 5 #random.uniform(min_snr_db, max_snr_db)
         
         # Calculate the scaling factor for the noise
         target_snr_linear = 10 ** (target_snr_db / 10)
@@ -310,7 +310,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, no
         wav = wav + scaled_noise
 
     # Remove noise in the frequency domain
-  #  wav = noise_reduction(wav, noise_threshold=0.1, frame_length=frame_length, frame_step=frame_step)
+    wav = noise_reduction(wav, noise_threshold=0.1, frame_length=frame_length, frame_step=frame_step)
 
     # Next, get the spectrogram of the audio file
     spectrogram, frame_step = get_spectrogram(wav)
@@ -320,7 +320,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, no
     # Get the MFCC
     mfcc = get_mfccs(log_mel_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
     
-    return mfcc, label
+    return mfcc,wav, label
 
 
 ### MAIN FUNCTIONS 
@@ -394,13 +394,12 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     return train_files, train_labels, val_files_list, val_labels, test_files_list, test_labels, class_to_index
 
     
-def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, batch_size = 32, mode = 'train', noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode = 'train', noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Create a TensorFlow dataset from the audio files and labels.
     Args:
         path_files: List of audio file paths
         labels: List of corresponding labels
-        batch_size: Batch size for the dataset
         mode: Mode of the dataset ('train', 'val', or 'test')
     Returns:
         dataset: TensorFlow dataset"""
@@ -426,7 +425,6 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
     num_parallel_calls=tf.data.AUTOTUNE
                 )  
      
-  #  ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     
     return ds
 
@@ -884,8 +882,11 @@ def visualize_mfccs(mfccs, label):
 
 
 
-"""
+
 if __name__ == '__main__':
+
+
+    """
 
     SAMPLE_RATE = 16000 # TODO : given ? 
     FRAME_LENGTH = 400
@@ -954,9 +955,9 @@ if __name__ == '__main__':
     
 
     # Listen to the audio
-    #listen_audio(wavs[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
+    listen_audio(wavs[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
     # Listen to the noisy audio
-  #  listen_audio(wav_noisy, sample_rate = sample_rates[EXAMPLE].numpy())
+    listen_audio(wav_noisy, sample_rate = sample_rates[EXAMPLE].numpy())
     # Listen to the padded audio
    # listen_audio(wav_padded, sample_rate = sample_rates[EXAMPLE].numpy())
 
@@ -987,6 +988,8 @@ if __name__ == '__main__':
 
     # Create datasets (which also processes paths into audio files & does trimming/padding)
     # TODO : look in Andrade2018 paper how they did noisy datasets, I think train has noise and val/test they tested both in noisy and non noisy conditions
+
+    
     train_ds, val_ds, test_ds = create_tf_dataset(train_files, train_labels, batch_size = 32, mode = 'train', noise = True),\
                                 create_tf_dataset(val_files, val_labels, batch_size = 32, mode = 'val'),\
                                 create_tf_dataset(test_files, test_labels, batch_size = 32, mode = 'test')
@@ -1001,4 +1004,5 @@ if __name__ == '__main__':
     # Visualize some examples 
     for mfcc, label in train_ds.take(1):
         visualize_mfccs(mfcc[0], idx_to_label_conversion(tf.get_static_value(label[0]), class_to_index))
-"""
+
+    """

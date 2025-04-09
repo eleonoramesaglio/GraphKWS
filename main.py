@@ -16,7 +16,7 @@ print(f"Tensorflow version: {tf.__version__}")
 
 def main():
     
-    tf.random.set_seed(42)
+   # tf.random.set_seed(42)
 
     SAMPLE_RATE = 16000 # given in the dataset
     FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
@@ -51,13 +51,13 @@ def main():
     # noise = True to match 2015 google paper ; possibly do a comparison with noise = False
     train_ds, val_ds, test_ds = utils_data.create_tf_dataset(train_files, train_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                               batch_size = 32, mode = 'train', noise = False),\
+                                                              mode = 'train', noise = True),\
                                 utils_data.create_tf_dataset(val_files, val_labels,sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                               batch_size = 32, mode = 'val'),\
+                                                              mode = 'val', noise = False),\
                                 utils_data.create_tf_dataset(test_files, test_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                               batch_size = 32, mode = 'test')
+                                                              mode = 'test', noise = False)
     
 
 
@@ -65,8 +65,9 @@ def main():
 
     # Since all audios are padded to the same length, we can extract static sizes for the MFCCs
 
-    for mfcc, label in train_ds.take(1):
+    for mfcc, wav, label in train_ds.take(1):
         example_mfcc = mfcc
+        example_wav = wav
         example_label = label
         N_FRAMES = tf.shape(mfcc)[0]
         N_MFCCS = tf.shape(mfcc)[1]
@@ -78,9 +79,12 @@ def main():
 
 
 
-    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', window_size=5)
+    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='cosine window', window_size_cosine= 25, window_size=5, alpha = 0.01)
 
 
+   # utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
+
+   # utils_data.visualize_single_waveform(example_wav, label = 1)
     
     # Visualize the adjacency matrix
    # utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
@@ -94,9 +98,9 @@ def main():
 
     # use lambda because we want to apply the function to each element of the dataset, which is a tuple (mfcc, label) and we have additional 
     # parameters in our create_adjacency_matrix function
-    train_ds = train_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
-    val_ds = val_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
-    test_ds = test_ds.map(lambda mfcc, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity', window_size=5))
+    train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, alpha = 0.99))
+    val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, alpha = 0.99))
+    test_ds = test_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, window_size=5, alpha = 0.99))
 
     # Check the shape of the dataset
     for mfcc, adjacency_matrix, label in train_ds.take(1):
@@ -119,11 +123,6 @@ def main():
     pos = utils_graph.node_layout(networkx_graph)
    # utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
 
-    # Dilated adjacency matrix
-    dilated_adjacency_matrix = utils_graph.create_dilated_adjacency_matrix(example_adjacency_matrix, dilation_rate=2)
-    # Visualize the dilated adjacency matrix
-    utils_graph.visualize_adjacency_matrix(dilated_adjacency_matrix, title="Dilated Adjacency Matrix")
-
 
 
 
@@ -140,10 +139,8 @@ def main():
     val_ds = val_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
     test_ds = test_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
-    # TODO : look for file input & parsing https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/guide/input_pipeline.md
-    # TODO : possibly check graph schema tutorial : https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/guide/data_prep.md
-    # TODO : scale MFCCs  !!!! for NNs to work correctly 
-    # TODO : look at base_gnn code and understand some steps, implement GCN, GAT etc.
+
+
     # Check the shape of the dataset
     for graph, label in train_ds.take(1):
         print(f"Graph shape: {graph.shape}")
@@ -164,11 +161,11 @@ def main():
                              train_ds = train_ds,
                              val_ds = val_ds,
                              test_ds = test_ds,
-                             epochs = 5,
+                             epochs = 10,
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
 
-
+  # TODO: do this current model (which works decent on noisy train, non-noisy val/test) without any noise to see how well it perofrms ; also train for more epochs
 
 
 if __name__ == '__main__':

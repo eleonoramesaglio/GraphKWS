@@ -446,6 +446,8 @@ def base_GATv2_model(
         node, i.e. we initialize in the beginning a context node.
         Here, much more is possible ; look into the documentation !
 
+        using also weighted adjacency matrix for in-between nodes
+
 
     """
 
@@ -544,7 +546,7 @@ def base_GATv2_model(
 
         return  GATv2Conv(
             num_heads = num_heads,
-            per_head_channels = 32, # dimension of vector of output of each head
+            per_head_channels = 128, # dimension of vector of output of each head
             heads_merge_type = 'concat', # how to merge the heads
             receiver_tag = receiver_tag, # also possible nodes/edges ; see documentation of function !
             receiver_feature = tfgnn.HIDDEN_STATE,
@@ -556,8 +558,39 @@ def base_GATv2_model(
         )
     
 
-    def convolution(message_dim, receiver_tag):
-        return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag)
+    class WeightedSumConvolution(tf.keras.layers.Layer):
+
+        def __init__(self, message_dim, receiver_tag):
+            super().__init__()
+            self.message_dim = message_dim
+            self.receiver_tag = receiver_tag
+            self.sender_tag = tfgnn.SOURCE if receiver_tag == tfgnn.TARGET else tfgnn.TARGET
+            self.dense = dense(units = message_dim, use_layer_normalization = use_layer_normalization)
+        
+        def call(self, graph, edge_set_name):
+            # Get node states
+            messages = tfgnn.broadcast_node_to_edges(
+                graph,
+                edge_set_name,
+                self.sender_tag,
+                feature_name="hidden_state") # Take the hidden state of the node
+            
+            # Get edge weights
+            weights = graph.edge_sets[edge_set_name].features['weights']
+            
+            # Apply weights to messages
+            weighted_messages = tf.expand_dims(weights, -1) * messages
+            
+            # Pool messages to target nodes
+            pooled_messages = tfgnn.pool_edges_to_node(
+                graph,
+                edge_set_name,
+                self.receiver_tag,
+                reduce_type='sum',
+                feature_value=weighted_messages)
+            
+            # Transform pooled messages
+            return self.dense(pooled_messages)
 
 
     def next_state(next_state_dim, use_layer_normalization):
@@ -567,14 +600,14 @@ def base_GATv2_model(
         graph = tfgnn.keras.layers.GraphUpdate(
             node_sets = {
                 "frames" : tfgnn.keras.layers.NodeSetUpdate(
-                    {"connections" : convolution(message_dim, tfgnn.SOURCE)},
+                    {"connections" : WeightedSumConvolution(message_dim, tfgnn.TARGET)},
                 next_state(next_state_dim, use_layer_normalization)
                 )
             },
 
             context = tfgnn.keras.layers.ContextUpdate(
                 {
-                    "frames" : gat_convolution(num_heads= 5, receiver_tag = tfgnn.CONTEXT)
+                    "frames" : gat_convolution(num_heads= 2, receiver_tag = tfgnn.CONTEXT)
                 },
                 next_state(next_state_dim, use_layer_normalization)
             

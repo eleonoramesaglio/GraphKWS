@@ -62,7 +62,7 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
         similarity_matrix = normalized_cosine_similarity(mfcc, num_frames)
 
         # Substitute the weights of the edges with the similarity values
-        adjacency_matrix = tf.where(adjacency_matrix > 0, similarity_matrix, adjacency_matrix, dtype=tf.float32)
+        adjacency_matrix = tf.where(adjacency_matrix > 0, similarity_matrix, adjacency_matrix)
 
 
 
