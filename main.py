@@ -15,6 +15,8 @@ print(f"Tensorflow version: {tf.__version__}")
 
 
 def main():
+    
+    tf.random.set_seed(42)
 
     SAMPLE_RATE = 16000 # given in the dataset
     FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
@@ -148,7 +150,8 @@ def main():
 
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec)
+    base_model = base_gnn.base_GATv2_model(graph_tensor_specification = graphs_spec,
+                                                  n_message_passing_layers = 2)
 
     print(base_model.summary())
 

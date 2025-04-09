@@ -310,7 +310,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, no
         wav = wav + scaled_noise
 
     # Remove noise in the frequency domain
-    wav = noise_reduction(wav, noise_threshold=0.1, frame_length=frame_length, frame_step=frame_step)
+  #  wav = noise_reduction(wav, noise_threshold=0.1, frame_length=frame_length, frame_step=frame_step)
 
     # Next, get the spectrogram of the audio file
     spectrogram, frame_step = get_spectrogram(wav)
