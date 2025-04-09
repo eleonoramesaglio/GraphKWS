@@ -119,6 +119,11 @@ def main():
     pos = utils_graph.node_layout(networkx_graph)
    # utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
 
+    # Dilated adjacency matrix
+    dilated_adjacency_matrix = utils_graph.create_dilated_adjacency_matrix(example_adjacency_matrix, dilation_rate=2)
+    # Visualize the dilated adjacency matrix
+    utils_graph.visualize_adjacency_matrix(dilated_adjacency_matrix, title="Dilated Adjacency Matrix")
+
 
 
 
