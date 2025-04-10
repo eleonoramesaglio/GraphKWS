@@ -653,8 +653,8 @@ def base_gnn_model_using_gcn(
 
     # TODO 
     In this approach, instead of using SimpleConv() for the message passing, we use GCN layers!
-    Note that this only works with homogeneous graphs ; thus we can not directly use our similarity
-    approach (or we need to modify) , and we do it with our windows approach
+    Note that this only works with homogeneous graphs ; therefore, we use our cosine window
+    approach as it is homogeneous and use weighted edges 
 
     """
 
@@ -749,7 +749,9 @@ def base_gnn_model_using_gcn(
             activation = "relu",
             use_bias = True,
             kernel_regularizer = regularizer,
-            add_self_loops = False
+            add_self_loops = False,
+            edge_weight_feature_name= 'weights',
+            degree_normalization= 'in'
         )
 
     

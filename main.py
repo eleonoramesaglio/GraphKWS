@@ -16,7 +16,7 @@ print(f"Tensorflow version: {tf.__version__}")
 
 def main():
     
-   # tf.random.set_seed(42)
+    tf.random.set_seed(42)
 
     SAMPLE_RATE = 16000 # given in the dataset
     FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
@@ -79,7 +79,7 @@ def main():
 
 
 
-    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='cosine window', window_size_cosine= 25, window_size=5, alpha = 0.01)
+    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='cosine window', cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5, alpha = 0.01)
 
 
    # utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
@@ -87,7 +87,7 @@ def main():
    # utils_data.visualize_single_waveform(example_wav, label = 1)
     
     # Visualize the adjacency matrix
-   # utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
+    utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
 
 
     # Since some of our adjacency matrix modes will have a different adjacency matrix for each MFCC,
@@ -111,6 +111,7 @@ def main():
         example_adjacency_matrix = adjacency_matrix
 
 
+   # utils_data.visualize_mfccs(example_mfcc, label = 1)
 
     graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
     #print(f"Graph example shape: {graph_example.shape}")
@@ -152,7 +153,7 @@ def main():
 
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_GATv2_model(graph_tensor_specification = graphs_spec,
+    base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2)
 
     print(base_model.summary())
@@ -165,7 +166,6 @@ def main():
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
 
-  # TODO: do this current model (which works decent on noisy train, non-noisy val/test) without any noise to see how well it perofrms ; also train for more epochs
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ import scipy as sp
 
 
 #TODO: alpha, beta and threshold are best to be tuned on a validation set
-def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, window_size_cosine = 10, alpha = 0.7, beta = 0.1, threshold = 0.3):
+def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -63,6 +63,9 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
 
         # Substitute the weights of the edges with the similarity values
         adjacency_matrix = tf.where(adjacency_matrix > 0, similarity_matrix, adjacency_matrix)
+
+        # Now use a threshold to remove edges with low similarity
+        adjacency_matrix = tf.where(adjacency_matrix >= cosine_window_thresh, adjacency_matrix, tf.zeros_like(adjacency_matrix))
 
 
 
