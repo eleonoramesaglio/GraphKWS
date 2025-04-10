@@ -93,11 +93,10 @@ def create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2):
     Create a dilated adjacency matrix based on the original adjacency matrix (A) to access not directly connected nodes.
     The dilation rate indicates how many hops away the nodes are.
     Such matrix is obtained with the following formula: 
-        A_dilated = {A^d - [A^(d-1) + ... - A^1 + I]} > 0
+        A_dilated = {A^d - [A^(d-1) + ... + A^1 + (d-1)*I]} > 0
     where d is the dilation rate and I is the identity matrix.
 
     """
-
 
     # Initialize the dilated adjacency matrix as the original adjacency matrix (A)
     dilated_adjacency_matrix = adjacency_matrix
@@ -112,7 +111,7 @@ def create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2):
     
     # Remove all powers of A from 1 to d-1 (we remove all connections less than d hops away)
     for i in range(dilation_rate - 1):
-        dilated_adjacency_matrix = tf.subtract(dilated_adjacency_matrix, powers[i])
+        dilated_adjacency_matrix = tf.where(powers[i] > 0, tf.zeros_like(adjacency_matrix), dilated_adjacency_matrix)
 
     # Remove self-loops (diagonal elements)
     dilated_adjacency_matrix = tf.linalg.set_diag(dilated_adjacency_matrix, tf.zeros(tf.shape(adjacency_matrix)[0], dtype=tf.float32))
@@ -121,6 +120,7 @@ def create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2):
     dilated_adjacency_matrix = tf.cast(dilated_adjacency_matrix > 0, dtype=tf.float32)
 
     return dilated_adjacency_matrix
+
 
 
 

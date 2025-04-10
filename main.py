@@ -79,15 +79,14 @@ def main():
 
 
 
-    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='cosine window', cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5, alpha = 0.01)
+    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
 
 
    # utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
 
    # utils_data.visualize_single_waveform(example_wav, label = 1)
     
-    # Visualize the adjacency matrix
-    utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
+
 
 
     # Since some of our adjacency matrix modes will have a different adjacency matrix for each MFCC,
@@ -98,9 +97,9 @@ def main():
 
     # use lambda because we want to apply the function to each element of the dataset, which is a tuple (mfcc, label) and we have additional 
     # parameters in our create_adjacency_matrix function
-    train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, alpha = 0.99))
-    val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, alpha = 0.99))
-    test_ds = test_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, window_size=5, alpha = 0.99))
+    train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity',window_size_cosine = 25, window_size=5))
+    val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='similarity',window_size_cosine = 25, window_size=5))
+    test_ds = test_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='similarity',window_size_cosine = 25, window_size=5))
 
     # Check the shape of the dataset
     for mfcc, adjacency_matrix, label in train_ds.take(1):
@@ -109,6 +108,10 @@ def main():
         print(f"Label shape: {label.shape}")
         example_mfcc = mfcc
         example_adjacency_matrix = adjacency_matrix
+
+    
+    # Visualize the adjacency matrix
+    utils_graph.visualize_adjacency_matrix(adjacency_matrix, title="Adjacency Matrix")
 
 
    # utils_data.visualize_mfccs(example_mfcc, label = 1)
@@ -125,9 +128,13 @@ def main():
    # utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
 
 
-
-
+    dilated = utils_graph.create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2)
+    dilated = utils_graph.dilated_adjacency_matrix_with_weights(dilated, example_mfcc, num_frames=N_FRAMES)
+    utils_graph.visualize_adjacency_matrix(dilated, title="Adjacency Matrix")
     
+
+
+    """
     # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
     train_ds = train_ds.map(lambda mfcc, adjacency_matrix, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
     val_ds = val_ds.map(lambda mfcc, adjacency_matrix, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
@@ -166,6 +173,7 @@ def main():
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
 
+                             """
 
 
 if __name__ == '__main__':
