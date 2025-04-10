@@ -410,6 +410,232 @@ def base_gnn_model(
 
 
 
+
+
+def GAT_GCN_model(
+        
+        graph_tensor_specification,
+        initial_nodes_mfccs_layer_dims = 64,
+        initial_edges_weights_layer_dims = [16],
+        message_dim = 128,
+        next_state_dim = 128,
+        num_classes = 35,
+        l2_reg_factor = 6e-6,
+        dropout_rate = 0.2,
+        use_layer_normalization = True,
+        n_message_passing_layers = 4,
+
+
+        ):
+    
+
+    """ GAT for context node, GCN for node features """
+
+
+    # Input is the graph structure 
+    input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
+
+    # Convert to scalar GraphTensor
+    # TODO : is this even needed ? what does it do ?
+    graph = tfgnn.keras.layers.MapFeatures()(input_graph)
+
+    is_batched = (graph.spec.rank == 1)
+
+
+
+    if is_batched:
+        batch_size = graph.shape[0]
+        graph = graph.merge_batch_to_components()
+
+
+
+
+
+    # Define the initial hidden states for the nodes
+    def set_initial_node_state(node_set,node_set_name):
+        """
+        Initialize hidden states for nodes in the graph.
+        
+        Args:
+            node_set: A dictionary containing node features
+            node_set_name: The name of the node set (e.g., "frames")
+            
+        Returns:
+            A transformation function applied to the node features
+        """
+
+
+        def dense_inner(units, use_layer_normalization = False, normalization_type = "normal"):
+            regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+            result = tf.keras.Sequential([
+                tf.keras.layers.Dense(
+                    units,
+                    activation = "relu",
+                    use_bias = True,
+                    kernel_regularizer = regularizer,
+                    bias_regularizer = regularizer),
+                tf.keras.layers.Dropout(dropout_rate)])
+            if use_layer_normalization:
+                if normalization_type == 'normal':
+                    result.add(tf.keras.layers.LayerNormalization())
+                elif normalization_type == 'group':
+                    result.add(tf.keras.layers.GroupNormalization(message_dim))
+            return result 
+
+
+        if node_set_name == "frames":
+
+
+            features = node_set["features"]
+
+            # Split the diff. features such that we can do separate layer learning
+
+
+            # TODO : try to do base mfcc + its energy, delta + energy, delta-delta + energy
+            base_mfccs = features[: , 0:12]
+            delta_mfccs = features[: , 12:24]
+            delta_delta_mfccs = features[:, 24:36]
+            energy_features = features[:, 36:39]
+
+            base_processed = dense_inner(24, use_layer_normalization=True)(base_mfccs)
+            delta_processed = dense_inner(24, use_layer_normalization=True)(delta_mfccs)
+            delta_delta_processed = dense_inner(24, use_layer_normalization=True)(delta_delta_mfccs)
+            energy_processed = dense_inner(8, use_layer_normalization=True)(energy_features)
+
+            # Concatenate the processed features
+            combined_features = tf.keras.layers.Concatenate()(
+                [base_processed, delta_processed, delta_delta_processed, energy_processed]
+            )
+            
+
+
+            return dense_inner(initial_nodes_mfccs_layer_dims, use_layer_normalization=True)(combined_features)
+            
+        else:
+            # Handle any other node types
+            raise ValueError(f"Unknown node set: {node_set_name}")
+            
+    def set_initial_edge_state(edge_set, edge_set_name):
+        """
+        Initialize hidden states for edges in the graph
+        
+        
+        """
+        # TODO : can be implemented if we want 
+        pass 
+
+
+    def set_initial_context_state(context):
+        """
+        Initialize hidden state for the context of the graph (i.e. the whole graph)
+        
+        """
+
+        # Option 1 : initialize the context node with a zero vector
+        return tfgnn.keras.layers.MakeEmptyFeature()(context)
+        
+
+    graph = tfgnn.keras.layers.MapFeatures(
+        node_sets_fn = set_initial_node_state,
+        context_fn= set_initial_context_state, name = 'init_states')(graph)
+    
+    # Let us now build some basic building blocks for our model
+    def dense(units, use_layer_normalization = False):
+        """ Dense layer with regularization (L2 & Dropout) & normalization"""
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+        result = tf.keras.Sequential([
+            tf.keras.layers.Dense(
+                units,
+                activation = "relu",
+                use_bias = True,
+                kernel_regularizer = regularizer,
+                bias_regularizer = regularizer),
+            tf.keras.layers.Dropout(dropout_rate)])
+        if use_layer_normalization:
+            result.add(tf.keras.layers.LayerNormalization())
+        return result 
+    
+
+    def gat_convolution(num_heads, receiver_tag):
+        # Here we now use a GAT layer
+
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+
+
+        return  GATv2Conv(
+            num_heads = num_heads,
+            per_head_channels = 32, # dimension of vector of output of each head
+            heads_merge_type = 'concat', # how to merge the heads
+            receiver_tag = receiver_tag, # also possible nodes/edges ; see documentation of function !
+            receiver_feature = tfgnn.HIDDEN_STATE,
+            sender_node_feature = tfgnn.HIDDEN_STATE,
+            sender_edge_feature= None,
+            kernel_regularizer= regularizer,
+
+        )
+    
+
+    def gcn_convolution(message_dim, receiver_tag):
+        # Here we now use a GCN layer 
+        # TODO : don't understand how to add dropout ; I think
+        # we would need to add it into the GCNConv class itself, since
+        # we are not calling a keras layer here, but the whole class 
+        # (i.e. we cannot use the sequential function like normally)
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+
+
+        return  gcn_conv.GCNConv(
+            units = message_dim,
+            receiver_tag= receiver_tag,
+            activation = "relu",
+            use_bias = True,
+            kernel_regularizer = regularizer,
+            add_self_loops = False,
+            edge_weight_feature_name= 'weights',
+            degree_normalization= 'in'
+        )
+
+
+    def next_state(next_state_dim, use_layer_normalization):
+        return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+    
+    for i in range(n_message_passing_layers):
+        graph = tfgnn.keras.layers.GraphUpdate(
+            node_sets = {
+                "frames" : tfgnn.keras.layers.NodeSetUpdate(
+                    {"connections" : gcn_convolution(message_dim, tfgnn.TARGET)},
+                next_state(next_state_dim, use_layer_normalization)
+                )
+            },
+
+            context = tfgnn.keras.layers.ContextUpdate(
+                {
+                    "frames" : gat_convolution(num_heads= 3, receiver_tag = tfgnn.CONTEXT)
+                },
+                next_state(next_state_dim, use_layer_normalization)
+            
+        ))(graph)
+
+
+
+    # Get the current context state (has shape (batch_size, 128) , where 128 is the message_passing_dimension)
+    # This represents the master node, which is updated in each message passing layer !
+    context_state = graph.context.features['hidden_state']
+
+    # Dropout # TODO: like in speechreco paper, see if it works/ m
+    context_state = tf.keras.layers.Dropout(dropout_rate)(context_state)
+
+    logits = tf.keras.layers.Dense(num_classes)(context_state)
+
+    model = tf.keras.Model(input_graph, logits)
+
+    return model 
+
+
+
+
+
+
 def base_GATv2_model(
         graph_tensor_specification,
         initial_nodes_mfccs_layer_dims = 64,
@@ -618,6 +844,9 @@ def base_GATv2_model(
     # Get the current context state (has shape (batch_size, 128) , where 128 is the message_passing_dimension)
     # This represents the master node, which is updated in each message passing layer !
     context_state = graph.context.features['hidden_state']
+
+    # Dropout # TODO: like in speechreco paper, see if it works/ m
+  #  context_state = tf.keras.layers.Dropout(dropout_rate)(context_state)
 
     logits = tf.keras.layers.Dense(num_classes)(context_state)
 
