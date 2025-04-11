@@ -7,7 +7,7 @@ import scipy as sp
 
 
 #TODO: alpha, beta and threshold are best to be tuned on a validation set
-def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
+def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', dilated = 0, window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -80,7 +80,12 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
         raise ValueError("Unsupported mode: {}".format(mode))
     
 
-
+    if dilated == 1:
+        # Create a dilated adjacency matrix based on the original adjacency matrix (A) to access not directly connected nodes.
+        adjacency_matrix = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2)
+        # Add weights to the dilated adjacency matrix based on the similarity function between node features.
+        adjacency_matrix = dilated_adjacency_matrix_with_weights(adjacency_matrix, mfcc, num_frames)
+        
 
     return mfcc, adjacency_matrix , label
 
@@ -120,8 +125,6 @@ def create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2):
     dilated_adjacency_matrix = tf.cast(dilated_adjacency_matrix > 0, dtype=tf.float32)
 
     return dilated_adjacency_matrix
-
-
 
 
 
