@@ -15,22 +15,41 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
     The adjacency matrix is created based on the mode specified.
     
     Args:
+        mfcc: The MFCCs of the audio file.
         num_frames: Number of frames in the MFCC.
+        label: The label of the audio file.
         mode: Sets the mode in which the adjacency matrix is created.
-               'window' : Creates an adjacency matrix based on a sliding window over the frames.
-                          This means that each frame is connected to its 'window_size' neighbors.
+               'window', 'cosine window', 'similarity'
+        n_dilation_layers: Number of dilation layers to create.
+        window_size: Size of the sliding window for the 'window' mode.
+        window_size_cosine: Size of the sliding window for the 'cosine window' mode.
+        alpha: Trade-off parameter for the similarity function.
+        beta: Scaling factor in the distance penalty for the similarity function (decides how fast the penalty increases with distance).
+        cosine_window_thresh: Threshold for the cosine window mode.
+        threshold: Threshold for the similarity function.
    
         
         Returns:
+        mfcc: The MFCCs of the audio file.
         adjacency_matrix: A 2D numpy array representing the adjacency matrix.
+        label: The label of the audio file.
     """
 
 
     adjacency_matrices = []
     adjacency_matrix = tf.zeros((num_frames, num_frames), dtype=tf.float32)
-    
+
+
     if mode == 'window':
-        # Create a sliding window adjacency matrix based on the window size
+
+    # 1. MODE 'WINDOW' : Creates an adjacency matrix based on a sliding window over the frames.
+    #    This means that each frame is connected to its 'window_size' neighbors.
+    #    The adjacency matrix is unweighted (0 or 1) and, thanks to the fixed window size, the corresponding graph is homogenous.
+    #    This is our base representation.
+    #    Models that are based on this representation: 
+    #    - base_gnn_model
+    #    (Note: we can still use all the other models with this representation, but they are not optimized for it)
+
 
         indices = tf.range(num_frames, dtype=tf.int32)
 
@@ -49,9 +68,19 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
         adjacency_matrix = tf.linalg.set_diag(adjacency_matrix, tf.zeros(num_frames, dtype=tf.float32))
 
     
+
     elif mode == 'cosine window':
-        
-        # Same as above, but we add edge weights based on the normalized cosine similarity between frames
+
+    # 2. MODE 'COSINE WINDOW' : Creates a weighted adjacency matrix based on a sliding window over the frames.
+    #    The weights are based on the cosine similarity between the MFCCs of the frames.
+    #    Eventually, the adjacency matrix can be thresholded based on 'cosine_window_thresh', to filter out weak connections.
+    #    Thus, the corresponding graph is not necessarily homogenous.
+    #    This mode gives more importance to the cosine similarity between frames with respect to mode 'similarity'.
+    #    We introduced this representation because cosine similarity helps in handling noise, by associating low weights to the
+    #    edges connecting frames containing spoken words and frames containing just background noise.
+    #    Models that are based on this representation:
+    #    - ...
+
 
         indices = tf.range(num_frames, dtype=tf.int32)
         i = tf.reshape(indices, [-1, 1])
@@ -69,15 +98,58 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
         # Now use a threshold to remove edges with low similarity
         adjacency_matrix = tf.where(adjacency_matrix >= cosine_window_thresh, adjacency_matrix, tf.zeros_like(adjacency_matrix))
 
+        # Create list of adjacency matrices
+        adjacency_matrices.append(adjacency_matrix)
+
+        # (If n_dilation_layers > 0)
+        # Create a dilated version of the adjacency matrix
+        # We start with a dilation rate of 2 and increase it by 2 for each layer
+        # (2, 4, 6, 8, ...)
+        dilation_rate = 2
+
+        for i in range(n_dilation_layers):
+            adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=dilation_rate)
+            # Substitute the weights of the edges with the cosine similarity values
+            similarity_matrix = normalized_cosine_similarity(mfcc, num_frames)
+            adjacency_matrix_dilated = tf.where(adjacency_matrix_dilated > 0, similarity_matrix, adjacency_matrix_dilated)
+            # Append the dilated adjacency matrix to the list
+            adjacency_matrices.append(adjacency_matrix_dilated)
+            # Increase the dilation rate for the next layer
+            dilation_rate += 2
+
 
 
     elif mode == 'similarity':
-        # Create a similarity adjacency matrix based on the cosine similarity between frames, with a penalty for distance
-        # This should ideally cluster close frames with similar frequencies together, allowing for an identification of the phonemes/words
+
+    # 3. MODE 'SIMILARITY' : Creates a weighted adjacency matrix based on a similarity function between frames.
+    #    The weights are based on the cosine similarity between the MFCCs of the frames, with a penalty for distance.
+    #    The adjacency matrix is then thresholded based on 'threshold', to filter out connections between frames far apart.
+    #    The trade-off between the cosine similarity and the distance penalty is controlled by 'alpha'.
+    #    This should ideally cluster close frames with similar frequencies together, allowing for an identification of the phonemes/words.
+    #    The corresponding graph is not homogenous.
+    #    Models that are based on this representation:
+    #    - ...
+
         similarity_matrix = similarity_function(mfcc, num_frames, alpha=alpha, beta=beta)
         adjacency_matrix = tf.where(similarity_matrix >= threshold, similarity_matrix, adjacency_matrix)
 
+        # Create list of adjacency matrices
+        adjacency_matrices.append(adjacency_matrix)
 
+        # (If n_dilation_layers > 0)
+        # Create a dilated version of the adjacency matrix
+        # We start with a dilation rate of 2 and increase it by 2 for each layer
+        # (2, 4, 6, 8, ...)
+        dilation_rate = 2
+
+        for i in range(n_dilation_layers):
+            adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=dilation_rate)
+            # Substitute the weights of the edges with the similarity values
+            adjacency_matrix_dilated = tf.where(adjacency_matrix_dilated > 0, similarity_matrix, adjacency_matrix_dilated)
+            # Append the dilated adjacency matrix to the list
+            adjacency_matrices.append(adjacency_matrix_dilated)
+            # Increase the dilation rate for the next layer
+            dilation_rate += 2
 
 
     
@@ -85,29 +157,9 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
         raise ValueError("Unsupported mode: {}".format(mode))
     
 
-    adjacency_matrices.append(adjacency_matrix)
     
 
-    # Create dilated version
-
-    # TODO : boolean whenever we want to use dilated version, also how many dilated versions to create etc. ;
-    # these also then need to be put in a list... so we have to change the structure after that (for data loading)
-    # a little bit
-
-    # We start with a dilation rate of 2 and increase it by 2 for each layer
-    # (2, 4, 6, 8, ...)
-    dilation_rate = 2
-
-    for i in range(n_dilation_layers):
-        adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=dilation_rate)
-        adjacency_matrices.append(adjacency_matrix_dilated)
-        dilation_rate += 2
-
-    # Alternatively, we could multiply the dilation rate by 2 for each layer (2, 4, 8, 16 ...)
-    
-        
-
-    return mfcc, adjacency_matrices , label
+    return mfcc, adjacency_matrices, label
 
 
 
