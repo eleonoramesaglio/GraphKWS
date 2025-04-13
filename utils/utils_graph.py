@@ -7,7 +7,7 @@ import scipy as sp
 
 
 #TODO: alpha, beta and threshold are best to be tuned on a validation set
-def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
+def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dilation_layers = 0, window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -93,11 +93,17 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window
     # TODO : boolean whenever we want to use dilated version, also how many dilated versions to create etc. ;
     # these also then need to be put in a list... so we have to change the structure after that (for data loading)
     # a little bit
-    
-    adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=2)
-    adjacency_matrices.append(adjacency_matrix_dilated)
 
+    # We start with a dilation rate of 2 and increase it by 2 for each layer
+    # (2, 4, 6, 8, ...)
+    dilation_rate = 2
 
+    for i in range(n_dilation_layers):
+        adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=dilation_rate)
+        adjacency_matrices.append(adjacency_matrix_dilated)
+        dilation_rate += 2
+
+    # Alternatively, we could multiply the dilation rate by 2 for each layer (2, 4, 8, 16 ...)
     
         
 
