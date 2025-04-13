@@ -79,7 +79,7 @@ def main():
 
 
 
-    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
+    _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', threshold= 0, cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
 
 
    # utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
@@ -97,17 +97,17 @@ def main():
 
     # use lambda because we want to apply the function to each element of the dataset, which is a tuple (mfcc, label) and we have additional 
     # parameters in our create_adjacency_matrix function
-    train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, dilated = True, dilation_rate = 2))
-    val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, dilated = True, dilation_rate = 2))
-    test_ds = test_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, window_size=5, dilated = True, dilation_rate = 2))
-
+    train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, threshold = 0.3))
+    val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, threshold = 0.3))
+    test_ds = test_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, window_size=5, threshold = 0.3))
     # Check the shape of the dataset
-    for mfcc, adjacency_matrix, label in train_ds.take(1):
+    for mfcc, adjacency_matrices, label in train_ds.take(1):
         print(f"MFCC shape: {mfcc.shape}")
-        print(f"Adjacency matrix shape: {adjacency_matrix.shape}")
+ 
+
         print(f"Label shape: {label.shape}")
         example_mfcc = mfcc
-        example_adjacency_matrix = adjacency_matrix
+        example_adjacency_matrix = adjacency_matrices[0]
 
     
     # Visualize the adjacency matrix
@@ -136,9 +136,9 @@ def main():
 
  
     # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
-    train_ds = train_ds.map(lambda mfcc, adjacency_matrix, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
-    val_ds = val_ds.map(lambda mfcc, adjacency_matrix, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
-    test_ds = test_ds.map(lambda mfcc, adjacency_matrix, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrix, label))
+    train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
 
     # Now batch
 
@@ -154,14 +154,13 @@ def main():
         print(f"Graph shape: {graph.shape}")
         print(f"Label shape: {label.shape}")
         print(label)
-        
+    
         # We need to get the graphs_spec for our model input
         graphs_spec = graph.spec 
 
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec,
-                                                
+    base_model = base_gnn.base_gnn_weighted_model_using_dilation(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2,)
                                                 #  skip_connection_type= 'sum')
 

@@ -7,7 +7,7 @@ import scipy as sp
 
 
 #TODO: alpha, beta and threshold are best to be tuned on a validation set
-def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', dilated = False, dilation_rate = 2,window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
+def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
     """
     Create a custom adjacency matrix for the graph.
     Since all our MFCCs are of the same length, we can create a static adjacency matrix.
@@ -25,6 +25,8 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', dilate
         adjacency_matrix: A 2D numpy array representing the adjacency matrix.
     """
 
+
+    adjacency_matrices = []
     adjacency_matrix = tf.zeros((num_frames, num_frames), dtype=tf.float32)
     
     if mode == 'window':
@@ -75,19 +77,31 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', dilate
         similarity_matrix = similarity_function(mfcc, num_frames, alpha=alpha, beta=beta)
         adjacency_matrix = tf.where(similarity_matrix >= threshold, similarity_matrix, adjacency_matrix)
 
+
+
+
     
     else:
         raise ValueError("Unsupported mode: {}".format(mode))
     
 
-    if dilated:
-        # Create a dilated adjacency matrix based on the original adjacency matrix (A) to access not directly connected nodes.
-        adjacency_matrix = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = dilation_rate)
-        # Add weights to the dilated adjacency matrix based on the similarity function between node features.
-        adjacency_matrix = dilated_adjacency_matrix_with_weights(adjacency_matrix, mfcc, num_frames)
+    adjacency_matrices.append(adjacency_matrix)
+    
+
+    # Create dilated version
+
+    # TODO : boolean whenever we want to use dilated version, also how many dilated versions to create etc. ;
+    # these also then need to be put in a list... so we have to change the structure after that (for data loading)
+    # a little bit
+    
+    adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=2)
+    adjacency_matrices.append(adjacency_matrix_dilated)
+
+
+    
         
 
-    return mfcc, adjacency_matrix , label
+    return mfcc, adjacency_matrices , label
 
 
 
@@ -124,23 +138,25 @@ def create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2):
     # Select only the positive connections
     dilated_adjacency_matrix = tf.cast(dilated_adjacency_matrix > 0, dtype=tf.float32)
 
+  
+    
     return dilated_adjacency_matrix
 
 
 
-
+"""
 def dilated_adjacency_matrix_with_weights(dilated_adjacency_matrix, mfccs, num_frames):
 
-    """
+    '''
     Add weights to the dilated adjacency matrix based on the cosine similarity between node features.
 
-    """
+    '''
 
     similarity_matrix = similarity_function(mfccs, num_frames, alpha=0.7, beta=0.1)
     dilated_adjacency_matrix = tf.where(dilated_adjacency_matrix > 0, similarity_matrix, dilated_adjacency_matrix)
 
     return dilated_adjacency_matrix
-
+"""
 #TODO: There are other ways to assign weights to the edges! 
 
 
