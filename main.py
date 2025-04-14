@@ -97,9 +97,13 @@ def main():
 
     # use lambda because we want to apply the function to each element of the dataset, which is a tuple (mfcc, label) and we have additional 
     # parameters in our create_adjacency_matrix function
-    train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window', window_size_cosine = 25, window_size=5, threshold = 0.3))
-    val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, window_size=5, threshold = 0.3))
-    test_ds = test_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, window_size=5, threshold = 0.3))
+
+
+    N_DILATION_LAYERS = 2
+
+    train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
+    val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
+    test_ds = test_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
     # Check the shape of the dataset
     for mfcc, adjacency_matrices, label in train_ds.take(1):
         print(f"MFCC shape: {mfcc.shape}")
@@ -158,10 +162,13 @@ def main():
         # We need to get the graphs_spec for our model input
         graphs_spec = graph.spec 
 
+    # Note : GCN residual block we didn't implement the dilation mode
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_weighted_model_using_dilation(graph_tensor_specification = graphs_spec,
-                                                  n_message_passing_layers = 2,)
+    base_model = base_gnn.base_gnn_with_context_node_model(graph_tensor_specification = graphs_spec,
+                                                  n_message_passing_layers = 2,
+                                                  dilation = True,
+                                                  n_dilation_layers= N_DILATION_LAYERS)
                                                 #  skip_connection_type= 'sum')
 
     print(base_model.summary())
