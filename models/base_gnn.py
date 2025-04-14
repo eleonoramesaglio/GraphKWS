@@ -102,6 +102,8 @@ def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label):
         
         # Get corresponding weights
         weights = tf.gather_nd(adjacency_matrix, edges)
+
+      #  weights = tf.reshape(weights, [-1, 1])
         
         # Extract source and target indices
         sources = edges[:, 0]
@@ -111,7 +113,7 @@ def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label):
         edge_set_name = f"connections_{i}"
         
         edge_sets[edge_set_name] = tfgnn.EdgeSet.from_fields(
-            features={"weights": weights},
+            features={"weights" : weights},
             sizes=[tf.shape(edges)[0]],
             adjacency=tfgnn.Adjacency.from_indices(
                 source=("frames", sources),
@@ -470,6 +472,171 @@ def base_gnn_model(
     return model 
 
 
+
+def base_gnn_model_learning_edge_weights(
+        graph_tensor_specification,
+        initial_nodes_mfccs_layer_dims = 64,
+        initial_edges_weights_layer_dims = 64,
+        message_dim = 128,
+        next_state_dim = 128,
+        num_classes = 35,
+        l2_reg_factor = 6e-6,
+        dropout_rate = 0.2,
+        use_layer_normalization = True,
+        n_message_passing_layers = 4,
+        dilation = False,
+        n_dilation_layers = 2,
+
+
+        ):
+    
+    """
+
+    A base GNN model, NOT utilizing the pre-calculated weights of the adjacency matrix,
+    but learning the weights during training.
+
+    """
+
+    
+
+    # Input is the graph structure 
+    input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
+
+    # Convert to scalar GraphTensor
+    graph = tfgnn.keras.layers.MapFeatures()(input_graph)
+
+    is_batched = (graph.spec.rank == 1)
+
+
+
+    if is_batched:
+        batch_size = graph.shape[0]
+        graph = graph.merge_batch_to_components()
+
+
+
+    def set_initial_node_state(node_set,node_set_name):
+        """
+        Initialize hidden states for nodes in the graph.
+        
+        Args:
+            node_set: A dictionary containing node features
+            node_set_name: The name of the node set (e.g., "frames")
+            
+        Returns:
+            A transformation function applied to the node features
+        """
+        if node_set_name == "frames":
+            # Apply a dense layer to transform MFCC features into hidden states
+            # Instead of just one dense layer , we can also directly use dropout etc. here (if we wish so) 
+            return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
+                node_set["features"]  
+            )
+        else:
+            # Handle any other node types
+            raise ValueError(f"Unknown node set: {node_set_name}")
+            
+    def set_initial_edge_state(edge_set, edge_set_name):
+        """
+        Initialize hidden states for edges in the graph.
+        Right now we just learn for the non-dilated adjacency matrix (i.e. connections_0)
+        """
+        if edge_set_name == "connections_0":
+
+            return tf.keras.layers.Dense(initial_edges_weights_layer_dims, activation="relu")(tf.expand_dims(edge_set['weights'], axis = -1))
+
+        else:
+            # Handle any other edge types
+            raise ValueError(f"Unknown node set: {edge_set_name}")
+
+
+    def set_initial_context_state():
+        """
+        Initialize hidden state for the context of the graph (i.e. the whole graph)
+        
+        """
+        # TODO : can be implemented if we want
+        pass
+        
+
+    graph = tfgnn.keras.layers.MapFeatures(
+        node_sets_fn = set_initial_node_state,
+        edge_sets_fn = set_initial_edge_state,
+          name = 'init_states')(graph)
+    
+    # Let us now build some basic building blocks for our model
+    def dense(units, use_layer_normalization = False):
+        """ Dense layer with regularization (L2 & Dropout) & normalization"""
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+        result = tf.keras.Sequential([
+            tf.keras.layers.Dense(
+                units,
+                activation = "relu",
+                use_bias = True,
+                kernel_regularizer = regularizer,
+                bias_regularizer = regularizer),
+            tf.keras.layers.Dropout(dropout_rate)])
+        if use_layer_normalization:
+            result.add(tf.keras.layers.LayerNormalization())
+        return result 
+    
+
+
+    def convolution(message_dim, receiver_tag):
+        return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag)
+    
+
+    def next_state(next_state_dim, use_layer_normalization):
+        return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+    
+
+
+
+    if not dilation:
+        # Like this, in the modulo calculation, we only use connections_0 all the time, i.e. we do not use dilation
+        n_dilation_layers = 1
+
+
+    for i in range(n_message_passing_layers):
+        dil_layer_num = i % n_dilation_layers # circular usage of dilated adjacency matrices throughout message passing layers
+        # https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/api_docs/python/tfgnn/keras/layers/NodeSetUpdate.md
+        graph = tfgnn.keras.layers.GraphUpdate(
+            node_sets = {
+                "frames" : tfgnn.keras.layers.NodeSetUpdate(
+                    {f"connections_{dil_layer_num}" : convolution(message_dim, tfgnn.SOURCE)},
+                next_state(next_state_dim, use_layer_normalization)
+                )
+            },
+
+            #https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/api_docs/python/tfgnn/keras/layers/EdgeSetUpdate.md
+            #selects input features from the edge and its incident nodes, then passes them through a next-state layer
+            edge_sets = {
+                "connections_0" : tfgnn.keras.layers.EdgeSetUpdate(
+                    next_state(next_state_dim, use_layer_normalization),
+                  
+                )
+            }
+
+        )(graph)
+
+
+
+
+    # Take all the 98 learnt node features , aggregate them using sum
+    # which is then representing the context vector (i.e. the "graph node")
+    pooled_features = tfgnn.keras.layers.Pool(
+        tfgnn.CONTEXT, "sum", node_set_name = "frames")(graph)  
+    logits = tf.keras.layers.Dense(num_classes)(pooled_features)
+
+
+    
+    model = tf.keras.Model(input_graph, logits)
+
+
+    return model 
+
+
+
 def GAT_GCN_model(
         
         graph_tensor_specification,
@@ -700,7 +867,6 @@ def GAT_GCN_model(
     model = tf.keras.Model(input_graph, logits)
 
     return model 
-
 
 
 def base_GATv2_model(
@@ -1090,6 +1256,7 @@ def base_gnn_model_using_gcn(
 
     return model 
 
+
 def base_gnn_model_using_gcn_with_residual_blocks(
         graph_tensor_specification,
         initial_nodes_mfccs_layer_dims=128,
@@ -1237,7 +1404,6 @@ def base_gnn_model_using_gcn_with_residual_blocks(
     model = tf.keras.Model(input_graph, logits)
     
     return model
-
 
 
 def base_gnn_with_context_node_model(
@@ -1414,8 +1580,6 @@ def base_gnn_with_context_node_model(
     return model 
 
 
-
-
 def base_gnn_weighted_model(
         graph_tensor_specification,
         initial_nodes_mfccs_layer_dims = 64,
@@ -1427,6 +1591,8 @@ def base_gnn_weighted_model(
         dropout_rate = 0.2,
         use_layer_normalization = True,
         n_message_passing_layers = 4,
+        dilation = False,
+        n_dilation_layers = 2,
 
 
         ):
@@ -1616,17 +1782,18 @@ def base_gnn_weighted_model(
 
 
 
-
     def next_state(next_state_dim, use_layer_normalization):
         return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
     
-
+    if not dilation:
+        n_dilation_layers = 1
 
     for i in range(n_message_passing_layers):
+        dil_layer_num = i % n_dilation_layers # circular usage of dilated adjacency matrices throughout message passing layers
         graph = tfgnn.keras.layers.GraphUpdate(
             node_sets = {
                 "frames" : tfgnn.keras.layers.NodeSetUpdate(
-                    {"connections" : WeightedSumConvolution(message_dim, tfgnn.TARGET)},
+                    {f"connections_{dil_layer_num}" : WeightedSumConvolution(message_dim, tfgnn.TARGET)},
                 next_state(next_state_dim, use_layer_normalization)
                 )
             }
@@ -1644,6 +1811,7 @@ def base_gnn_weighted_model(
 
 
     return model 
+
 
 
 

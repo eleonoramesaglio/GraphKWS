@@ -99,7 +99,7 @@ def main():
     # parameters in our create_adjacency_matrix function
 
 
-    N_DILATION_LAYERS = 2
+    N_DILATION_LAYERS = 0
 
     train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
     val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
@@ -165,11 +165,14 @@ def main():
     # Note : GCN residual block we didn't implement the dilation mode
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_with_context_node_model(graph_tensor_specification = graphs_spec,
+    base_model = base_gnn.base_gnn_model_learning_edge_weights(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2,
-                                                  dilation = True,
-                                                  n_dilation_layers= N_DILATION_LAYERS)
+                                                  dilation = False,
+                                                  n_dilation_layers= 0)
                                                 #  skip_connection_type= 'sum')
+
+    for layer in base_model.layers:
+        print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
 
     print(base_model.summary())
 
