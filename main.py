@@ -165,7 +165,7 @@ def main():
     # Note : GCN residual block we didn't implement the dilation mode
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_model_learning_edge_weights(graph_tensor_specification = graphs_spec,
+    base_model = base_gnn.base_GATv2_model(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2,
                                                   dilation = False,
                                                   n_dilation_layers= 0)

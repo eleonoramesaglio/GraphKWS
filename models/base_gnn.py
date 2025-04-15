@@ -1024,6 +1024,7 @@ def base_GATv2_model(
             heads_merge_type = 'concat', # how to merge the heads
             receiver_tag = receiver_tag, # also possible nodes/edges ; see documentation of function !
             receiver_feature = tfgnn.HIDDEN_STATE,
+            attention_activation= 'sigmoid', # TODO : new, trying for better scores ?
             sender_node_feature = tfgnn.HIDDEN_STATE,
             sender_edge_feature= None,
             kernel_regularizer= regularizer,
