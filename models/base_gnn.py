@@ -113,7 +113,7 @@ def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label):
         edge_set_name = f"connections_{i}"
         
         edge_sets[edge_set_name] = tfgnn.EdgeSet.from_fields(
-            features={"weights" : weights},
+            features={"weights" : weights}, 
             sizes=[tf.shape(edges)[0]],
             adjacency=tfgnn.Adjacency.from_indices(
                 source=("frames", sources),
@@ -514,6 +514,15 @@ def base_gnn_model_learning_edge_weights(
         graph = graph.merge_batch_to_components()
 
 
+    def map_edge_features(edge_set, edge_set_name):
+        if edge_set_name == "connections_0":
+            return {"weights": tf.expand_dims(edge_set["weights"], axis=-1)}
+        return edge_set.features
+
+    graph = tfgnn.keras.layers.MapFeatures(
+        edge_sets_fn=map_edge_features
+    )(graph)
+
 
     def set_initial_node_state(node_set,node_set_name):
         """
@@ -543,7 +552,7 @@ def base_gnn_model_learning_edge_weights(
         """
         if edge_set_name == "connections_0":
 
-            return tf.keras.layers.Dense(initial_edges_weights_layer_dims, activation="relu")(tf.expand_dims(edge_set['weights'], axis = -1))
+            return tf.keras.layers.Dense(initial_edges_weights_layer_dims, activation="relu")(edge_set['weights'])
 
         else:
             # Handle any other edge types
@@ -583,7 +592,8 @@ def base_gnn_model_learning_edge_weights(
 
 
     def convolution(message_dim, receiver_tag):
-        return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag)
+        return tfgnn.keras.layers.SimpleConv(dense(message_dim), "sum", receiver_tag = receiver_tag,
+                                             sender_edge_feature= tfgnn.HIDDEN_STATE) # SENDER EDGE FEATURE NEEDED HERE, WHEN WE USE SET INITIAL EDGE STATE!!!
     
 
     def next_state(next_state_dim, use_layer_normalization):
@@ -601,22 +611,23 @@ def base_gnn_model_learning_edge_weights(
         dil_layer_num = i % n_dilation_layers # circular usage of dilated adjacency matrices throughout message passing layers
         # https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/api_docs/python/tfgnn/keras/layers/NodeSetUpdate.md
         graph = tfgnn.keras.layers.GraphUpdate(
+
+            #https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/api_docs/python/tfgnn/keras/layers/EdgeSetUpdate.md
+            #selects input features from the edge and its incident nodes, then passes them through a next-state layer
+            edge_sets = {
+                "connections_0" : tfgnn.keras.layers.EdgeSetUpdate(
+                    next_state = next_state(next_state_dim, use_layer_normalization),
+                    edge_input_feature = tfgnn.HIDDEN_STATE
+                  
+                )
+            },
+
             node_sets = {
                 "frames" : tfgnn.keras.layers.NodeSetUpdate(
                     {f"connections_{dil_layer_num}" : convolution(message_dim, tfgnn.SOURCE)},
                 next_state(next_state_dim, use_layer_normalization)
                 )
             },
-
-            #https://github.com/tensorflow/gnn/blob/main/tensorflow_gnn/docs/api_docs/python/tfgnn/keras/layers/EdgeSetUpdate.md
-            #selects input features from the edge and its incident nodes, then passes them through a next-state layer
-            edge_sets = {
-                "connections_0" : tfgnn.keras.layers.EdgeSetUpdate(
-                    next_state(next_state_dim, use_layer_normalization),
-                  
-                )
-            }
-
         )(graph)
 
 
