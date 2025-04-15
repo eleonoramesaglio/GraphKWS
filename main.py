@@ -163,6 +163,8 @@ def main():
         graphs_spec = graph.spec 
 
     # Note : GCN residual block we didn't implement the dilation mode
+
+   
     
     # Note that we actually have 35 classes !!! not like written in project B1
     base_model = base_gnn.base_GATv2_model(graph_tensor_specification = graphs_spec,
@@ -170,6 +172,9 @@ def main():
                                                   dilation = False,
                                                   n_dilation_layers= 0)
                                                 #  skip_connection_type= 'sum')
+
+
+    attention = base_gnn.extract_attention(base_model)
 
     for layer in base_model.layers:
         print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
@@ -180,11 +185,10 @@ def main():
                              train_ds = train_ds,
                              val_ds = val_ds,
                              test_ds = test_ds,
-                             epochs = 10,
+                             epochs = 1,
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
-
-                             
+    
 
 
 if __name__ == '__main__':

@@ -1828,6 +1828,72 @@ def base_gnn_weighted_model(
 
 
 
+
+# NOTE: 
+# This model is just to see if my ATTENTION WEIGHTS are correctly detecting the important parts of the audio signal
+
+def extract_attention(base_model):
+    """
+    Creates a model that outputs attention weights for visualization
+    """
+    # Create a new model to extract attention weights from base_model
+    # First, get access to the GATv2Conv layers in your model
+    gatv2_layers = []
+    
+    # Find all GATv2Conv layers in the model
+    def find_gatv2_layers(model):
+        gatv2_layers = []
+        
+        # Recursively search through layers
+        def search_layers(layer):
+            if isinstance(layer, GATv2Conv):
+                gatv2_layers.append(layer)
+            
+            # If the layer has sublayers, search through them
+            if hasattr(layer, 'layers'):
+                for sublayer in layer.layers:
+                    search_layers(sublayer)
+        
+        # Start the search
+        for layer in model.layers:
+            search_layers(layer)
+        
+        return gatv2_layers
+
+    # Find the GATv2Conv layers
+    gatv2_layers = find_gatv2_layers(base_model)
+    
+    # Define a custom model to extract attention weights
+    class AttentionExtractionModel(tf.keras.Model):
+        def __init__(self, base_model, gatv2_layers):
+            super().__init__()
+            self.base_model = base_model
+            self.gatv2_layers = gatv2_layers
+            
+        def call(self, inputs):
+            # First do a forward pass to make sure all layers are computed
+            _ = self.base_model(inputs)
+            
+            # Now try to extract attention weights from each GATv2Conv layer
+            attention_weights = []
+            for layer in self.gatv2_layers:
+                # This is a simplification - the actual attribute name may vary
+                # depending on your GATv2Conv implementation
+                if hasattr(layer, '_attention_weights'):
+                    attention_weights.append(layer._attention_weights)
+                elif hasattr(layer, 'attention_weights'):
+                    attention_weights.append(layer.attention_weights)
+            
+            return attention_weights
+    
+    attention_model = AttentionExtractionModel(base_model, gatv2_layers)
+    
+    return attention_model
+
+
+
+
+
 def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_callbacks = True, learning_rate = 0.001):
 
     # Define callbacks
@@ -1872,8 +1938,4 @@ def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_ca
 
 
 
-    return history 
-
-
-
-
+    return history
