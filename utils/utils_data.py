@@ -536,6 +536,8 @@ def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
 
     return log_mel_spectrogram
 
+# TODO: Try to implement Gammatone filterbanks instead of Mel-Filterbanks, as they work better in handling noise
+
 
 def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
     
@@ -605,7 +607,8 @@ def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
     mfccs = tf.concat([mfccs_0, mfccs_delta_1, mfccs_delta_2, log_frame_energy, energy_delta_1, energy_delta_2], axis=-1)
 
     return mfccs
-    
+
+
 
 
 
