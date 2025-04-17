@@ -965,7 +965,7 @@ def base_GATv2_model(
             # Apply a dense layer to transform MFCC features into hidden states
             # Instead of just one dense layer , we can also directly use dropout etc. here (if we wish so) 
             return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                node_set["features"]  # This would be your mfcc_static features
+                node_set["features"] 
             )
         else:
             # Handle any other node types
@@ -1024,7 +1024,6 @@ def base_GATv2_model(
             heads_merge_type = 'concat', # how to merge the heads
             receiver_tag = receiver_tag, # also possible nodes/edges ; see documentation of function !
             receiver_feature = tfgnn.HIDDEN_STATE,
-            attention_activation= 'sigmoid', # TODO : new, trying for better scores ?
             sender_node_feature = tfgnn.HIDDEN_STATE,
             sender_edge_feature= None,
             kernel_regularizer= regularizer,

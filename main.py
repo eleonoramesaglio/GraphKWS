@@ -16,7 +16,7 @@ print(f"Tensorflow version: {tf.__version__}")
 
 def main():
     
-    tf.random.set_seed(42)
+    tf.random.set_seed(32) # Possibly change seed if a model isn't working good !
 
     SAMPLE_RATE = 16000 # given in the dataset
     FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
@@ -51,13 +51,13 @@ def main():
     # noise = True to match 2015 google paper ; possibly do a comparison with noise = False
     train_ds, val_ds, test_ds = utils_data.create_tf_dataset(train_files, train_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'train', gammatone = True, noise = True),\
+                                                              mode = 'train', gammatone = False, noise = True, spec_augmentation = True),\
                                 utils_data.create_tf_dataset(val_files, val_labels,sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'val', gammatone = True, noise = False),\
+                                                              mode = 'val', gammatone = False, noise = False, spec_augmentation = False),\
                                 utils_data.create_tf_dataset(test_files, test_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'test', gammatone = True, noise = False)
+                                                              mode = 'test', gammatone = False, noise = False, spec_augmentation = False)
     
 
 
@@ -115,10 +115,10 @@ def main():
 
     
     # Visualize the adjacency matrix
-    utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
+  #  utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
 
 
-    utils_data.visualize_mfccs(example_mfcc, label = 1)
+ #   utils_data.visualize_mfccs(example_mfcc, label = 1)
 
     graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
     #print(f"Graph example shape: {graph_example.shape}")
@@ -167,7 +167,7 @@ def main():
    
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec,
+    base_model = base_gnn.base_GATv2_model(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2,
                                                   dilation = False,
                                                   n_dilation_layers= 0)

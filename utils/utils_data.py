@@ -10,6 +10,7 @@ import random
 import platform
 from pathlib import Path
 import sounddevice as sd
+from utils_spec_augmentation import *
 
 
 
@@ -215,7 +216,7 @@ def add_padding_or_trimming(wav, target_length = 16000, padding_mode = 'realisti
 
 # THIS ONE FOR DATASET
 
-def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone = False, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone = False, noise = False, spec_augmentation = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Preprocess the audio file by loading, trimming/padding, and normalizing.
     
@@ -314,6 +315,11 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
 
     # Next, get the spectrogram of the audio file
     spectrogram, frame_step = get_spectrogram(wav)
+
+
+    if spec_augmentation:
+        spectrogram = spec_augment_easy(spectrogram, freq_param = 5, time_param = 15, mode = 'all')
+
     
     # Get MFCCs
     if not gammatone:
@@ -402,7 +408,7 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     return train_files, train_labels, val_files_list, val_labels, test_files_list, test_labels, class_to_index
 
     
-def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode = 'train', gammatone= False, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode = 'train', gammatone= False, noise = False, spec_augmentation = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Create a TensorFlow dataset from the audio files and labels.
     Args:
@@ -425,6 +431,7 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
         sample_rate=sample_rate,
         frame_length=frame_length,
         frame_step=frame_step,
+        spec_augmentation= spec_augmentation,
         gammatone=gammatone,
         noise=noise, 
         noise_type=noise_type, 
@@ -535,7 +542,7 @@ def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
     max_frequency = float(sample_rate/2)    # ... up to Nyquist frequency (8000 Hz in our case)
 
     # And the number of filters
-    num_mel_filters = 32
+    num_mel_filters = 26
 
     # Create transformation matrix that maps from linear frequency scale to mel frequency scale
     mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(num_mel_filters, num_spectrogram_bins, sample_rate, min_frequency, max_frequency)
