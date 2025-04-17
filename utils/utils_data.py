@@ -215,7 +215,7 @@ def add_padding_or_trimming(wav, target_length = 16000, padding_mode = 'realisti
 
 # THIS ONE FOR DATASET
 
-def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone = 0, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone = False, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Preprocess the audio file by loading, trimming/padding, and normalizing.
     
@@ -316,7 +316,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
     spectrogram, frame_step = get_spectrogram(wav)
     
     # Get MFCCs
-    if gammatone == 0:
+    if not gammatone:
         log_mel_spectrogram = apply_mel_filterbanks(spectrogram, sample_rate)
         mfcc = get_mfccs(log_mel_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
 
@@ -402,7 +402,7 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     return train_files, train_labels, val_files_list, val_labels, test_files_list, test_labels, class_to_index
 
     
-def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode = 'train', gammatone=0, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode = 'train', gammatone= False, noise = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
     """
     Create a TensorFlow dataset from the audio files and labels.
     Args:

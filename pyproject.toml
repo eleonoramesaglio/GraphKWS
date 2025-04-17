@@ -9,16 +9,17 @@ authors = [
 readme = "README.md"
 requires-python = ">3.11.0,<3.13"
 dependencies = [
-    "tensorflow (>=2.19.0,<3.0.0)",
+    "tensorflow (==2.19.0)",
     "pathlib (>=1.0.1,<2.0.0)",
     "numpy (>=1.26.0,<2.2.0)",
     "matplotlib (>=3.10.1,<4.0.0)",
     "pandas (>=2.2.3,<3.0.0)",
     "sounddevice (>=0.5.1,<0.6.0)",
-    "tf-keras (>=2.19.0,<3.0.0)",
     "scipy (>=1.15.2,<2.0.0)",
     "pyyaml (>=6.0.2,<7.0.0)",
     "h5py (>=3.13.0,<4.0.0)",
+    "specaugment (>=1.2.5,<2.0.0)",
+    "tf-keras (>=2.19.0,<3.0.0)",
 ]
 
 
