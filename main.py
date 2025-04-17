@@ -174,10 +174,9 @@ def main():
                                                 #  skip_connection_type= 'sum')
 
 
-    attention = base_gnn.extract_attention(base_model)
 
-    for layer in base_model.layers:
-        print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
+  #  for layer in base_model.layers:
+  #      print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
 
     print(base_model.summary())
 
@@ -185,7 +184,7 @@ def main():
                              train_ds = train_ds,
                              val_ds = val_ds,
                              test_ds = test_ds,
-                             epochs = 1,
+                             epochs = 2,
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
     
