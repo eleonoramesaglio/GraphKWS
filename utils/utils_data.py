@@ -511,7 +511,7 @@ def get_spectrogram(wav, sample_rate = 16000):
 
 
 # From the spectrogram, we can extract our feature using two different filterbanks:
-# 1. Mel-filterbanks
+# 1. Mel-filterbanks -> MFCCs
 #    Classic filterbank used to extract MFCCs, uses triangular filters
 
 
@@ -526,7 +526,7 @@ def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
     max_frequency = float(sample_rate/2)    # ... up to Nyquist frequency (8000 Hz in our case)
 
     # And the number of filters
-    num_mel_filters = 26
+    num_mel_filters = 32
 
     # Create transformation matrix that maps from linear frequency scale to mel frequency scale
     mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(num_mel_filters, num_spectrogram_bins, sample_rate, min_frequency, max_frequency)
@@ -544,17 +544,89 @@ def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
     return log_mel_spectrogram
 
 
-# 2. Gammatone filterbanks
+# Define the function to compute the delta coefficients:
+
+def compute_delta(mfccs, M):
+        # Get the number of frames (needed, bc tensorflow has None dynamically for the first dimension and we need it in calculations)
+        frame_count = tf.shape(mfccs)[0]
+    
+        # Pad the mfccs at the beginning and at the end to handle boundary frames
+        padded_mfccs = tf.pad(mfccs, [[M, M], [0, 0]], mode='SYMMETRIC')    # This pads [M,M] in time (frames) dimension and pads [0,0] in the frequency dimension
+    
+        # Prepare the denominator: 2 * sum(m²)
+        denominator = 2 * sum([m**2 for m in range(1, M+1)])
+    
+        # Initialize the deltas
+        deltas = tf.zeros_like(mfccs)
+    
+        # Iterate through each m value
+        for m in range(1, M+1):
+        
+            # Get frames at n+m
+            next_frames = padded_mfccs[M+m:M+m+frame_count]
+            # The indexes are shifted by M with respect to the original mfccs because of the padding
+            
+            # Get frames at n-m
+            prev_frames = padded_mfccs[M-m:M-m+frame_count]
+        
+            # Add weighted difference to the delta coefficients
+            deltas += m * (next_frames - prev_frames) / denominator
+    
+        return deltas
+
+
+def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
+    
+    # 1. Compute the DCT and select the coefficients 2, ... 13 from the log-mel spectrogram
+    mfccs_0 = tf.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrogram)[..., 1:13]
+ 
+
+    # 2. Compute the first derivative of the MFCCs
+    mfccs_delta_1 = compute_delta(mfccs_0, M)
+
+
+    # 3. Compute the second derivative of the MFCCs
+    mfccs_delta_2 = compute_delta(mfccs_delta_1, M)
+
+
+    # 4. Compute the energies of the signal:
+
+    # First energy
+    # Divide the raw audio into frames
+    framed_wav = tf.signal.frame(wav, frame_length= frame_length, frame_step= frame_step)
+    # Compute the energy of each frame
+    frame_energy = tf.reduce_sum(framed_wav**2, axis=-1)
+    # Take the logarithm
+    log_frame_energy = tf.math.log(frame_energy + np.finfo(float).eps)/tf.math.log(10.0)
+    # Add a dimension to match the shape of mfccs_0
+    log_frame_energy = tf.expand_dims(log_frame_energy, axis=-1)
+
+    # Second energy
+    energy_delta_1 = compute_delta(log_frame_energy, M)
+
+    # Third energy
+    energy_delta_2 = compute_delta(energy_delta_1, M)
+
+    # 5. Finally, concatenate the MFCCs, delta coefficients and energy coefficients:
+    mfccs = tf.concat([mfccs_0, mfccs_delta_1, mfccs_delta_2, log_frame_energy, energy_delta_1, energy_delta_2], axis=-1)
+
+    return mfccs
+
+
+
+# 2. Gammatone filterbanks -> GNCCs
+#    Linear filters described by an impulse response that is the product of a gamma distribution and sinusoidal tone
 #    They are used in the extraction of GNCCs or PNCCs as they are more effective in noisy conditions
 
 # In order to apply them, we define the following two functions: erb_space() and create_gammatone_filter_matrix()
+
 
 def erb_space(low_freq, high_freq, num_filters):
     """
     Compute frequencies equally spaced on the ERB (Equivalent Rectangular Bandwidth) scale.
     
     """
-        
+
     # Convert to ERB scale
     low_erb = 21.4 * tf.math.log(1.0 + 0.00437 * low_freq)
     high_erb = 21.4 * tf.math.log(1.0 + 0.00437 * high_freq)
@@ -598,9 +670,7 @@ def create_gammatone_filter_matrix(num_filters, num_spectrogram_bins, sample_rat
         # Bandwidth parameter
         b = 1.019 * erb
         
-        # Calculate filter response at each frequency
-        # The response is (f/cf)^(order-1) * exp(-2π*b*(f-cf))
-        # Note: avoid division by zero
+        # Calculate filter response at each frequency (note: avoid division by zero)
         response = tf.pow(freqs / tf.maximum(cf, 1e-6), order - 1) * tf.exp(-2.0 * np.pi * b * (freqs - cf))
         
         # Set response to zero for frequencies outside our range or negative values
@@ -629,7 +699,7 @@ def apply_gammatone_filterbanks(spectrogram, sample_rate=16000):
     max_frequency = float(sample_rate/2)
     
     # Number of filters (same as mel filters)
-    num_filters = 26
+    num_filters = 32
     
     # Create Gammatone filter bank
     gammatone_weight_matrix = create_gammatone_filter_matrix(
@@ -652,64 +722,31 @@ def apply_gammatone_filterbanks(spectrogram, sample_rate=16000):
     return log_gammatone_spectrogram
 
 
-# Now, we can either use the log_mel_spectrogram or the log_gammatone_spectrogram to obtain our features (MFCCs/GNCCs)
+def get_gnccs(log_gammatone_spectrogram, wav, frame_length, frame_step, M = 2, num_coeffs=12):
 
-def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
+    # 1. Compute manually the DCT
+    # Get the number of filters
+    num_filters = tf.shape(log_gammatone_spectrogram)[1]
+    # Create DCT matrix
+    dct_matrix = tf.signal.dct(tf.eye(num_filters), type=2)[:num_coeffs+1, :]
+    # Apply DCT to log gammatone spectrogram
+    gnccs_full = tf.matmul(log_gammatone_spectrogram, dct_matrix, transpose_b=True)
+    # Select coefficients 2 to 13
+    gnccs_0 = gnccs_full[:, 1:num_coeffs+1]
+
     
-    # 1. Compute the DCT and selects the coefficients 2, ... 13 from the log-mel spectrogram
-    mfccs_0 = tf.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrogram)[..., 1:13]
-
-    # 2. Define the function to compute the delta coefficients:
-
-    def compute_delta(mfccs, M):
-        # Get the number of frames (needed, bc tensorflow has None dynamically for the first dimension and we need it in calculations)
-        frame_count = tf.shape(mfccs)[0]
-    
-        # Pad the mfccs at the beginning and at the end to handle boundary frames
-        padded_mfccs = tf.pad(mfccs, [[M, M], [0, 0]], mode='SYMMETRIC')    # This pads [M,M] in time (frames) dimension and pads [0,0] in the frequency dimension
-    
-        # Prepare the denominator: 2 * sum(m²)
-        denominator = 2 * sum([m**2 for m in range(1, M+1)])
-    
-        # Initialize the deltas
-        deltas = tf.zeros_like(mfccs)
-    
-        # Iterate through each m value
-        for m in range(1, M+1):
-        
-            # Get frames at n+m
-            next_frames = padded_mfccs[M+m:M+m+frame_count]
-            # The indexes are shifted by M with respect to the original mfccs because of the padding
-            
-            # Get frames at n-m
-            prev_frames = padded_mfccs[M-m:M-m+frame_count]
-        
-            # Add weighted difference to the delta coefficients
-            deltas += m * (next_frames - prev_frames) / denominator
-    
-        return deltas
-    
-    #TODO: check this website https://desh2608.github.io/2019-07-26-delta-feats/
-    
-
-    # 3. Compute the first derivative of the MFCCs
-    mfccs_delta_1 = compute_delta(mfccs_0, M)
+    # 2. Compute the first derivative of the GNCCs
+    gnccs_delta_1 = compute_delta(gnccs_0, M)
 
 
-    # 4. Compute the second derivative of the MFCCs
-    mfccs_delta_2 = compute_delta(mfccs_delta_1, M)
+    # 3. Compute the second derivative of the GNCCs
+    gnccs_delta_2 = compute_delta(gnccs_delta_1, M)
 
-
-    # 5. Compute the energies of the signal:
-
+    # 4. Compute the energies of the signal (same as before)
     # First energy
-    # Divide the raw audio into frames
-    framed_wav = tf.signal.frame(wav, frame_length= frame_length, frame_step= frame_step)
-    # Compute the energy of each frame
+    framed_wav = tf.signal.frame(wav, frame_length=frame_length, frame_step=frame_step)
     frame_energy = tf.reduce_sum(framed_wav**2, axis=-1)
-    # Take the logarithm
-    log_frame_energy = tf.math.log(frame_energy + np.finfo(float).eps)/tf.math.log(10.0)
-    # Add a dimension to match the shape of mfccs_0
+    log_frame_energy = tf.math.log(frame_energy + tf.cast(tf.constant(np.finfo(float).eps), tf.float32))/tf.math.log(10.0)
     log_frame_energy = tf.expand_dims(log_frame_energy, axis=-1)
 
     # Second energy
@@ -718,11 +755,10 @@ def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
     # Third energy
     energy_delta_2 = compute_delta(energy_delta_1, M)
 
-    # 6. Finally, concatenate the MFCCs, delta coefficients and energy coefficients:
-    mfccs = tf.concat([mfccs_0, mfccs_delta_1, mfccs_delta_2, log_frame_energy, energy_delta_1, energy_delta_2], axis=-1)
+    # 6. Concatenate the GCCs, delta coefficients and energy coefficients
+    gnccs = tf.concat([gnccs_0, gnccs_delta_1, gnccs_delta_2, log_frame_energy, energy_delta_1, energy_delta_2], axis=-1)
 
-    return mfccs
-
+    return gnccs
 
 
 
