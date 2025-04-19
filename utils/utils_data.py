@@ -11,6 +11,7 @@ import platform
 from pathlib import Path
 import sounddevice as sd
 from utils_spec_augmentation import *
+from scipy.signal import gammatone
 
 
 
@@ -636,12 +637,11 @@ def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
 
 # In order to apply them, we define the following two functions: erb_space() and create_gammatone_filter_matrix()
 
-
+"""
 def erb_space(low_freq, high_freq, num_filters):
-    """
-    Compute frequencies equally spaced on the ERB (Equivalent Rectangular Bandwidth) scale.
     
-    """
+    Compute frequencies equally spaced on the ERB (Equivalent Rectangular Bandwidth) scale.
+
 
     # Convert to ERB scale
     low_erb = 21.4 * tf.math.log(1.0 + 0.00437 * low_freq)
@@ -657,10 +657,10 @@ def erb_space(low_freq, high_freq, num_filters):
 
 
 def create_gammatone_filter_matrix(num_filters, num_spectrogram_bins, sample_rate, min_frequency, max_frequency):
-    """
+
     Create a matrix of Gammatone filters.
     
-    """
+    
     # Constants for the ERB scale
     ear_q = 9.26449  # Glasberg and Moore parameters
     min_bw = 24.7
@@ -702,6 +702,135 @@ def create_gammatone_filter_matrix(num_filters, num_spectrogram_bins, sample_rat
     
     return filters
 
+"""
+
+def erb_space(low_freq, high_freq, num_filters):
+    """
+    Compute frequencies equally spaced on the ERB (Equivalent Rectangular Bandwidth) scale. """
+    
+    # Constants for ERB scale
+    ear_q = 9.26449
+    min_bw = 24.7
+    
+    # Convert to ERB scale
+    low_erb = 21.4 * np.log10(1 + low_freq / (4.37 * min_bw))
+    high_erb = 21.4 * np.log10(1 + high_freq / (4.37 * min_bw))
+    
+    # Linearly spaced points on ERB scale
+    erb_points = np.linspace(low_erb, high_erb, num_filters)
+    
+    # Convert back to Hz
+    return (10**(erb_points/21.4) - 1) * 4.37 * min_bw
+
+
+def create_gammatone_filterbank_tf(num_filters=32, sample_rate=16000, min_freq=100, max_freq=8000, fft_size=1024):
+    """
+    Create a Gammatone filterbank in the frequency domain, compatible with TensorFlow
+    """
+    # Get center frequencies on ERB scale using numpy
+    def erb_space(low_freq, high_freq, num_filters):
+        ear_q = 9.26449
+        min_bw = 24.7
+        low_erb = 21.4 * np.log10(1 + low_freq / (4.37 * min_bw))
+        high_erb = 21.4 * np.log10(1 + high_freq / (4.37 * min_bw))
+        erb_points = np.linspace(low_erb, high_erb, num_filters)
+        return (10**(erb_points/21.4) - 1) * 4.37 * min_bw
+    
+    center_freqs = erb_space(min_freq, max_freq, num_filters)
+    
+    # Create frequency axis
+    freq_bins = fft_size // 2 + 1
+    freq_axis = np.linspace(0, sample_rate/2, freq_bins)
+    
+    # Constants for ERB calculation
+    ear_q = 9.26449
+    min_bw = 24.7
+    order = 4
+    
+    # Initialize filterbank matrix
+    filterbank = np.zeros((freq_bins, num_filters))
+    
+    # Create each filter
+    for i, cf in enumerate(center_freqs):
+        # Calculate ERB bandwidth
+        erb = min_bw + (cf / ear_q)
+        b = 1.019 * erb
+        
+        # Time domain approach
+        duration = 0.128
+        t = np.linspace(0, duration, int(duration * sample_rate))
+        
+        # Time-domain gammatone impulse response
+        a = 1.0
+        cos_term = np.cos(2 * np.pi * cf * t)
+        decay_term = np.exp(-2 * np.pi * b * t)
+        power_term = t**(order-1)
+        impulse_response = a * power_term * cos_term * decay_term
+        
+        # Convert to frequency domain
+        filter_response = np.abs(np.fft.rfft(impulse_response, n=fft_size))
+        
+        # Normalize
+        if np.max(filter_response) > 0:
+            filter_response = filter_response / np.max(filter_response)
+        
+        # Add to filterbank
+        filterbank[:, i] = filter_response
+    
+    # Convert to TensorFlow constant
+    return tf.constant(filterbank, dtype=tf.float32)
+
+
+def create_gammatone_filterbank(num_filters=32, sample_rate=16000, min_freq=100, max_freq=8000, fft_size=1024):
+    """
+    Create a Gammatone filterbank in the frequency domain
+    """
+    # Get center frequencies on ERB scale
+    center_freqs = erb_space(min_freq, max_freq, num_filters)
+    
+    # Create frequency axis
+    freq_bins = fft_size // 2 + 1
+    freq_axis = np.linspace(0, sample_rate/2, freq_bins)
+    
+    # Constants for ERB calculation
+    ear_q = 9.26449
+    min_bw = 24.7
+    order = 4  # Standard filter order
+    
+    # Initialize filterbank matrix
+    filterbank = np.zeros((freq_bins, num_filters))
+    
+    # Create each filter
+    for i, cf in enumerate(center_freqs):
+        # Calculate ERB bandwidth
+        erb = min_bw + (cf / ear_q)
+        b = 1.019 * erb  # Bandwidth parameter
+        
+        # Time domain approach
+        # We'll create a time-domain gammatone filter and then take its FFT
+        duration = 0.128  # Filter duration in seconds
+        t = np.linspace(0, duration, int(duration * sample_rate))
+        
+        # Time-domain gammatone impulse response
+        # a * t^(n-1) * cos(2πft) * exp(-2πbt)
+        a = 1.0
+        cos_term = np.cos(2 * np.pi * cf * t)
+        decay_term = np.exp(-2 * np.pi * b * t)
+        power_term = t**(order-1)
+        impulse_response = a * power_term * cos_term * decay_term
+        
+        # Convert to frequency domain
+        filter_response = np.abs(np.fft.rfft(impulse_response, n=fft_size))
+        
+        # Normalize
+        if np.max(filter_response) > 0:
+            filter_response = filter_response / np.max(filter_response)
+        
+        # Add to filterbank
+        filterbank[:, i] = filter_response
+    
+    return filterbank
+
 
 # Finally, we apply the filterbank to our spectrogram
 
@@ -718,13 +847,7 @@ def apply_gammatone_filterbanks(spectrogram, sample_rate=16000):
     num_filters = 32
     
     # Create Gammatone filter bank
-    gammatone_weight_matrix = create_gammatone_filter_matrix(
-        num_filters=num_filters,
-        num_spectrogram_bins=num_spectrogram_bins,
-        sample_rate=sample_rate,
-        min_frequency=min_frequency,
-        max_frequency=max_frequency
-    )
+    gammatone_weight_matrix = create_gammatone_filterbank_tf(num_filters = num_filters, sample_rate=16000, min_freq=100, max_freq=8000, fft_size=400)
     
     # Apply the transformation
     gammatone_spectrogram = tf.tensordot(spectrogram, gammatone_weight_matrix, 1)
@@ -733,21 +856,16 @@ def apply_gammatone_filterbanks(spectrogram, sample_rate=16000):
     gammatone_spectrogram.set_shape(spectrogram.shape[:-1].concatenate(gammatone_weight_matrix.shape[-1:]))
     
     # Compute a stabilized log to get log-magnitude gammatone-scale spectrogram
-    log_gammatone_spectrogram = tf.math.log(gammatone_spectrogram + tf.cast(tf.constant(np.finfo(float).eps), tf.float32))
+    log_gammatone_spectrogram = tf.math.log(gammatone_spectrogram + np.finfo(float).eps)
     
     return log_gammatone_spectrogram
 
 
 def get_gnccs(log_gammatone_spectrogram, wav, frame_length, frame_step, M = 2, num_coeffs=12):
 
-    # 1. Compute manually the DCT
-    # Get the number of filters
-    num_filters = tf.shape(log_gammatone_spectrogram)[1]
-    # Create DCT matrix
-    dct_matrix = tf.signal.dct(tf.eye(num_filters), type=2)[:num_coeffs+1, :]
-    # Apply DCT to log gammatone spectrogram
-    gnccs_full = tf.matmul(log_gammatone_spectrogram, dct_matrix, transpose_b=True)
-    # Select coefficients 2 to 13
+    # 1. Compute the DCT
+    gnccs_full = tf.signal.dct(log_gammatone_spectrogram, type=2)
+    # Select coefficients (skip the 0th)
     gnccs_0 = gnccs_full[:, 1:num_coeffs+1]
 
     
@@ -762,7 +880,7 @@ def get_gnccs(log_gammatone_spectrogram, wav, frame_length, frame_step, M = 2, n
     # First energy
     framed_wav = tf.signal.frame(wav, frame_length=frame_length, frame_step=frame_step)
     frame_energy = tf.reduce_sum(framed_wav**2, axis=-1)
-    log_frame_energy = tf.math.log(frame_energy + tf.cast(tf.constant(np.finfo(float).eps), tf.float32))/tf.math.log(10.0)
+    log_frame_energy = tf.math.log(frame_energy + np.finfo(float).eps)/tf.math.log(10.0)
     log_frame_energy = tf.expand_dims(log_frame_energy, axis=-1)
 
     # Second energy
@@ -999,6 +1117,22 @@ def visualize_waveform_and_spectrogram(waveform, spectrogram, frame_step, label=
     # Adjust layout to prevent overlap
     plt.tight_layout()
     plt.show()
+
+
+
+def visualize_filterbank(filters, sample_rate, num_spectrogram_bins):
+    plt.figure(figsize=(12, 6))
+    freq_axis = np.linspace(0, sample_rate/2, num_spectrogram_bins)
+    
+    for i in range(filters.shape[1]):
+        plt.plot(freq_axis, filters[:, i])
+    
+    plt.title(f'Gammatone Filterbank ({filters.shape[1]} filters)')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Amplitude')
+    plt.grid(True)
+    plt.show()
+
 
 
 def visualize_mfccs(mfccs, label):

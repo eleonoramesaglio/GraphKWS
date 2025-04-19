@@ -51,13 +51,13 @@ def main():
     # noise = True to match 2015 google paper ; possibly do a comparison with noise = False
     train_ds, val_ds, test_ds = utils_data.create_tf_dataset(train_files, train_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'train', gammatone = False, noise = True, spec_augmentation = True),\
+                                                              mode = 'train', gammatone = True, noise = True, spec_augmentation = False),\
                                 utils_data.create_tf_dataset(val_files, val_labels,sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'val', gammatone = False, noise = False, spec_augmentation = False),\
+                                                              mode = 'val', gammatone = True, noise = False, spec_augmentation = False),\
                                 utils_data.create_tf_dataset(test_files, test_labels, sample_rate= SAMPLE_RATE, 
                                                              frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'test', gammatone = False, noise = False, spec_augmentation = False)
+                                                              mode = 'test', gammatone = True, noise = False, spec_augmentation = False)
     
 
 
@@ -117,8 +117,13 @@ def main():
     # Visualize the adjacency matrix
   #  utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
 
+    spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000)
+    num_spectrogram_bins = tf.shape(spectrogram)[-1]  
+    filters = utils_data.create_gammatone_filterbank_tf(num_filters=32, sample_rate=16000, 
+                               min_freq=100, max_freq=8000, fft_size=FRAME_LENGTH)
+    utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
 
- #   utils_data.visualize_mfccs(example_mfcc, label = 1)
+    utils_data.visualize_mfccs(example_mfcc, label = 1)
 
     graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
     #print(f"Graph example shape: {graph_example.shape}")
