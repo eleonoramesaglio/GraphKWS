@@ -117,13 +117,13 @@ def main():
     # Visualize the adjacency matrix
   #  utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
 
-    spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000)
-    num_spectrogram_bins = tf.shape(spectrogram)[-1]  
-    filters = utils_data.create_gammatone_filterbank_tf(num_filters=32, sample_rate=16000, 
-                               min_freq=100, max_freq=8000, fft_size=FRAME_LENGTH)
-    utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
+    spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 
+    gam_filters = utils_data.create_gammatone_filterbank(fft_size=FRAME_LENGTH)
+    utils_data.visualize_filterbank(gam_filters, spectrogram = spectrogram, gammatone = True)
+    _ , mel_filters = utils_data.apply_mel_filterbanks(spectrogram)
+    utils_data.visualize_filterbank(mel_filters, spectrogram = spectrogram)
 
-    utils_data.visualize_mfccs(example_mfcc, label = 1)
+    utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
 
     graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
     #print(f"Graph example shape: {graph_example.shape}")
