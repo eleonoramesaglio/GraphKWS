@@ -212,30 +212,46 @@ def main():
 
   #  print(base_model.summary())
 
-    history = base_gnn.train(model = base_model,
-                             train_ds = train_ds,
-                             val_ds = val_ds,
-                             test_ds = test_ds,
-                             epochs = 10,
-                             batch_size = BATCH_SIZE,
-                             learning_rate = 0.001)
+ #   history = base_gnn.train(model = base_model,
+ #                            train_ds = train_ds,
+ #                            val_ds = val_ds,
+ #                            test_ds = test_ds,
+ #                            epochs = 10,
+ #                            batch_size = BATCH_SIZE,
+ #                            learning_rate = 0.001)
     
 
+  
+  
+    # First, run hyperparameter tuning
+    best_hps = tune_gnn_model(
+        graph_tensor_specification=graphs_spec,
+        train_ds=train_ds,
+        val_ds=val_ds,
+        num_classes=35,
+        max_trials=10,
+        epochs_per_trial=20
+    )
 
-    # Confusion matrix visualization
+    # Build the best model
+    best_model = build_best_model(
+        best_hps=best_hps,
+        graph_tensor_specification=graphs_spec,
+        num_classes=35
+    )
 
-    y_pred = []
-    y_true = []
+    # Train the best model
+    history = train_best_model(
+        model=best_model,
+        train_ds=train_ds,
+        val_ds=val_ds,
+        test_ds=test_ds,
+        epochs=50,
+        use_callbacks=True
+    )
 
-    for x, y in test_ds:
-        predictions = base_model.predict(x)
-        y_pred.extend(np.argmax(predictions, axis=1))
-        y_true.extend(y.numpy())
+      
 
-    y_pred = np.array(y_pred)
-    y_true = np.array(y_true)
-
-    utils_data.visualize_confusion_matrix(y_pred, y_true)
 
     # Confusion matrix visualization
 
