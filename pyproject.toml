@@ -21,6 +21,7 @@ dependencies = [
     "specaugment (>=1.2.5,<2.0.0)",
     "tf-keras (>=2.19.0,<3.0.0)",
     "tensorflow-io (>=0.37.1,<0.38.0)",
+    "keras-tuner (>=1.4.7,<2.0.0)",
 ]
 
 

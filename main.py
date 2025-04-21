@@ -5,6 +5,7 @@ from models import base_gnn
 
 import pandas as pd 
 import tensorflow as tf 
+from tuning_gnn_models import * 
 
 # Get the tensorflow version
 print(f"Tensorflow version: {tf.__version__}")
@@ -117,10 +118,13 @@ def main():
     # Adjacency test
     # utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
 
-    spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000)
-    num_spectrogram_bins = tf.shape(spectrogram)[-1]  
-    filters = utils_data.create_gammatone_filterbank_tf(num_filters=32, sample_rate=16000, 
-                               min_freq=100, max_freq=8000, fft_size=FRAME_LENGTH)
+    spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 
+    gam_filters = utils_data.create_gammatone_filterbank(fft_size=FRAME_LENGTH)
+  #  utils_data.visualize_filterbank(gam_filters, spectrogram = spectrogram, gammatone = True)
+    _ , mel_filters = utils_data.apply_mel_filterbanks(spectrogram)
+  #  utils_data.visualize_filterbank(mel_filters, spectrogram = spectrogram)
+
+  #  utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
   #  utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
 
    # utils_data.visualize_mfccs(example_mfcc, label = 1)
@@ -148,17 +152,17 @@ def main():
  
     # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
   
- #   train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
- #   val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
- #   test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
 
 
 
     # TESTING MODE
     
-    train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
-    val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
-    test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+  #  train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+  #  val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+  #  test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
 
     # Now batch
 
@@ -183,28 +187,60 @@ def main():
    
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_hierarchical_model(graph_tensor_specification = graphs_spec,
-                                                  n_message_passing_layers = 2,
-                                                  dilation = False,
-                                                  n_dilation_layers= N_DILATION_LAYERS,
-                                                  l2_reg_factor= 1e-4,)
-                                                #  skip_connection_type= 'sum')
+  #  base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec,
+  #                                                n_message_passing_layers = 2,
+  #                                                dilation = False,
+  #                                                n_dilation_layers= N_DILATION_LAYERS,
+  #                                                l2_reg_factor= 1e-4,
+  #                                                use_residual_next_state= False)
+  #                                              #  skip_connection_type= 'sum')
 
 
 
-    for layer in base_model.layers:
-        print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
+  #  for layer in base_model.layers:
+  #      print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
 
-    print(base_model.summary())
+  #  print(base_model.summary())
 
-    history = base_gnn.train(model = base_model,
-                             train_ds = train_ds,
-                             val_ds = val_ds,
-                             test_ds = test_ds,
-                             epochs = 10,
-                             batch_size = BATCH_SIZE,
-                             learning_rate = 0.001)
+ #   history = base_gnn.train(model = base_model,
+ #                            train_ds = train_ds,
+ #                            val_ds = val_ds,
+ #                            test_ds = test_ds,
+ #                            epochs = 10,
+ #                            batch_size = BATCH_SIZE,
+ #                            learning_rate = 0.001)
     
+
+  
+  
+    # First, run hyperparameter tuning
+    best_hps = tune_gnn_model(
+        graph_tensor_specification=graphs_spec,
+        train_ds=train_ds,
+        val_ds=val_ds,
+        num_classes=35,
+        max_trials=10,
+        epochs_per_trial=20
+    )
+
+    # Build the best model
+    best_model = build_best_model(
+        best_hps=best_hps,
+        graph_tensor_specification=graphs_spec,
+        num_classes=35
+    )
+
+    # Train the best model
+    history = train_best_model(
+        model=best_model,
+        train_ds=train_ds,
+        val_ds=val_ds,
+        test_ds=test_ds,
+        epochs=50,
+        use_callbacks=True
+    )
+
+      
 
 
 if __name__ == '__main__':

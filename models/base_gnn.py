@@ -1720,6 +1720,7 @@ def base_gnn_weighted_model(
         n_message_passing_layers = 4,
         dilation = False,
         n_dilation_layers = 2,
+        use_residual_next_state = False
 
 
         ):
@@ -1732,6 +1733,8 @@ def base_gnn_weighted_model(
     
     """
     
+    if use_residual_next_state:
+        initial_nodes_mfccs_layer_dims = message_dim
 
     # Input is the graph structure 
     input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
@@ -1910,8 +1913,12 @@ def base_gnn_weighted_model(
 
 
     def next_state(next_state_dim, use_layer_normalization):
-        return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+        if not use_residual_next_state:
+            return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+        else:
+            return tfgnn.keras.layers.ResidualNextState(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
     
+
     if not dilation:
         n_dilation_layers = 1
 
@@ -2405,3 +2412,5 @@ def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_ca
 
 
     return history
+
+
