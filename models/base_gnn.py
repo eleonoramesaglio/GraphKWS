@@ -903,11 +903,7 @@ def GAT_GCN_model(
     
 
     def gcn_convolution(message_dim, receiver_tag):
-        # Here we now use a GCN layer 
-        # TODO : don't understand how to add dropout ; I think
-        # we would need to add it into the GCNConv class itself, since
-        # we are not calling a keras layer here, but the whole class 
-        # (i.e. we cannot use the sequential function like normally)
+
         regularizer = tf.keras.regularizers.l2(l2_reg_factor)
 
 
@@ -1374,6 +1370,8 @@ def base_gnn_model_using_gcn(
 
     pooled_features = tfgnn.keras.layers.Pool(
         tfgnn.CONTEXT, "mean", node_set_name = "frames")(graph)   # maybe mean is not the best choice, consider also sum/max
+    
+
     logits = tf.keras.layers.Dense(num_classes)(pooled_features)
 
 
@@ -2307,7 +2305,7 @@ def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_ca
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
             monitor='val_sparse_categorical_accuracy',
-            patience=10,
+            patience=2,
             restore_best_weights=True
         ),
      #   tf.keras.callbacks.ReduceLROnPlateau(

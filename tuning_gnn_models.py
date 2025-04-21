@@ -1,35 +1,173 @@
 import tensorflow as tf
-import keras_tuner as kt
 import tensorflow_gnn as tfgnn
-from models import base_gnn
+import optuna
+import numpy as np
+import os
 
-# First, we'll need to modify the model-building function to accept a HyperParameters object
-def build_tunable_gnn_model(hp, graph_tensor_specification, num_classes=35):
+def create_optuna_study(gnn_model, graph_tensor_specification, train_ds, val_ds, 
+                       num_classes=35, n_trials=10, timeout=None):
     """
-    A tunable version of the base_gnn_weighted_model function that works with Keras Tuner.
+    Create and run an Optuna study to find the best hyperparameters for the GNN model.
     
     Args:
-        hp: HyperParameters object from keras_tuner
+        base_gnn_weighted_model: The base model-building function to optimize
+        graph_tensor_specification: Specification for the input graph tensor
+        train_ds: Training dataset
+        val_ds: Validation dataset
+        num_classes: Number of output classes
+        n_trials: Number of hyperparameter combinations to try
+        timeout: Timeout in seconds for the entire study (None means no timeout)
+        
+    Returns:
+        The best parameters found and the Optuna study object
+    """
+    # Create a directory for saving study results
+    os.makedirs("optuna_results", exist_ok=True)
+    
+    def objective(trial):
+        """
+        The objective function to minimize.
+        Returns validation loss.
+        """
+        # Sample hyperparameters
+
+        message_dim = trial.suggest_int('message_dim', 64, 256, step=64)
+        initial_nodes_mfccs_layer_dims = trial.suggest_int('initial_nodes_layer_dims', 32, 128, step=32)
+        next_state_dim = trial.suggest_int('next_state_dim', 64, 256, step=64)
+        l2_reg_factor = trial.suggest_float('l2_reg_factor', 1e-6, 1e-4, log=True)
+        dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5, step=0.1)
+        n_message_passing_layers = trial.suggest_int('n_message_passing_layers', 2, 6, step=1)
+        use_layer_normalization = trial.suggest_categorical('use_layer_normalization', [True, False])
+     #   use_residual_next_state = trial.suggest_categorical('use_residual_next_state', [True, False])
+        dilation = trial.suggest_categorical('dilation', [True, False])
+        n_dilation_layers = 1
+        if dilation:
+            n_dilation_layers = trial.suggest_int('n_dilation_layers', 2, 4, step=1)
+        learning_rate = trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True)
+        
+        
+        # Create and compile model with sampled parameters
+        model = gnn_model(
+            graph_tensor_specification=graph_tensor_specification,
+            initial_nodes_mfccs_layer_dims=initial_nodes_mfccs_layer_dims,
+            message_dim=message_dim,
+            next_state_dim=next_state_dim,
+            num_classes=num_classes,
+            l2_reg_factor=l2_reg_factor,
+            dropout_rate=dropout_rate,
+            use_layer_normalization=use_layer_normalization,
+            n_message_passing_layers=n_message_passing_layers,
+            dilation=dilation,
+            n_dilation_layers=n_dilation_layers,
+            use_residual_next_state=False
+        )
+        
+        model.compile(
+            optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=learning_rate),
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy()]
+        )
+        
+        # Define early stopping callback
+        early_stopping = tf.keras.callbacks.EarlyStopping(
+            monitor='val_sparse_categorical_accuracy',
+            patience=2,
+            restore_best_weights=True
+        )
+
+        # Print the current parameters :
+
+        # Print the hyperparameters for this trial
+        print("\nHyperparameters for this trial:")
+        print(f"  message_dim: {message_dim}")
+        print(f"  initial_nodes_mfccs_layer_dims: {initial_nodes_mfccs_layer_dims}")
+        print(f"  next_state_dim: {next_state_dim}")
+        print(f"  l2_reg_factor: {l2_reg_factor:.8f}")
+        print(f"  dropout_rate: {dropout_rate:.2f}")
+        print(f"  n_message_passing_layers: {n_message_passing_layers}")
+        print(f"  use_layer_normalization: {use_layer_normalization}")
+        print(f"  use_residual_next_state: False")
+        print(f"  dilation: {dilation}")
+        print(f"  n_dilation_layers: {n_dilation_layers}")
+        print(f"  learning_rate: {learning_rate:.6f}")
+        print(model.summary())
+
+     
+
+        
+        # Train model for a few epochs 
+        # Limiting to just 5 epochs for faster hyperparameter search
+        history = model.fit(
+            train_ds,
+            validation_data=val_ds,
+            epochs=3,
+            callbacks=[early_stopping],
+            verbose=1
+        )
+        
+        # Get the best validation accuracy
+        best_val_acc = max(history.history['val_sparse_categorical_accuracy'])
+        
+        # Clean up to prevent memory leaks
+        del model
+        tf.keras.backend.clear_session()
+        
+        # Return negative accuracy because Optuna minimizes by default
+        return -best_val_acc
+    
+    # Create a study that maximizes accuracy (by minimizing negative accuracy)
+    study = optuna.create_study(
+        direction='minimize',
+        study_name='gnn_model_optimization',
+        storage=f'sqlite:///optuna_results/gnn_study.db',
+        load_if_exists=True
+    )
+    
+    # Run the optimization
+    study.optimize(objective, n_trials=n_trials, timeout=timeout)
+    
+    # Print optimization results
+    print("Number of finished trials:", len(study.trials))
+    print("Best trial:")
+    best_trial = study.best_trial
+    print("  Value:", -best_trial.value)  # Convert back to positive accuracy
+    print("  Params:")
+    for key, value in best_trial.params.items():
+        print(f"    {key}: {value}")
+        
+    # Return the best parameters and the study
+    return best_trial.params, study
+
+def build_model_with_best_params(best_params, gnn_model, graph_tensor_specification, num_classes=35):
+    """
+    Build a model with the best parameters found by Optuna.
+    
+    Args:
+        best_params: The best parameters found by Optuna
+        base_gnn_weighted_model: The base model-building function
         graph_tensor_specification: Specification for the input graph tensor
         num_classes: Number of output classes
         
     Returns:
-        A compiled Keras model
+        A compiled model with the best parameters
     """
-    # Define tunable hyperparameters with reasonable ranges
-    initial_nodes_mfccs_layer_dims = hp.Int('initial_nodes_layer_dims', min_value=32, max_value=128, step=32)
-    message_dim = hp.Int('message_dim', min_value=64, max_value=256, step=64)
-    next_state_dim = hp.Int('next_state_dim', min_value=64, max_value=256, step=64)
-    l2_reg_factor = hp.Float('l2_reg_factor', min_value=1e-6, max_value=1e-4, sampling='log')
-    dropout_rate = hp.Float('dropout_rate', min_value=0.1, max_value=0.5, step=0.1)
-    n_message_passing_layers = hp.Int('n_message_passing_layers', min_value=2, max_value=6, step=1)
-    use_layer_normalization = hp.Boolean('use_layer_normalization')
-    use_residual_next_state = hp.Boolean('use_residual_next_state')
+    # Extract parameters, using defaults for any that might be missing
+    message_dim = best_params.get('message_dim', 128)
     
-
+    # The following parameters will be used when you uncomment the extended parameter search
+    initial_nodes_mfccs_layer_dims = best_params.get('initial_nodes_layer_dims', 64)
+    next_state_dim = best_params.get('next_state_dim', 128)
+    l2_reg_factor = best_params.get('l2_reg_factor', 6e-6)
+    dropout_rate = best_params.get('dropout_rate', 0.2)
+    use_layer_normalization = best_params.get('use_layer_normalization', True)
+    n_message_passing_layers = best_params.get('n_message_passing_layers', 4)
+    dilation = best_params.get('dilation', False)
+    n_dilation_layers = best_params.get('n_dilation_layers', 2) if dilation else 2
+    use_residual_next_state = best_params.get('use_residual_next_state', False)
+    learning_rate = best_params.get('learning_rate', 0.001)
     
-    # Now call your existing model building function with these hyperparameters
-    model = base_gnn.base_gnn_weighted_model(
+    # Build model with the best parameters
+    model = gnn_model(
         graph_tensor_specification=graph_tensor_specification,
         initial_nodes_mfccs_layer_dims=initial_nodes_mfccs_layer_dims,
         message_dim=message_dim,
@@ -39,14 +177,12 @@ def build_tunable_gnn_model(hp, graph_tensor_specification, num_classes=35):
         dropout_rate=dropout_rate,
         use_layer_normalization=use_layer_normalization,
         n_message_passing_layers=n_message_passing_layers,
-        dilation=False,
-        n_dilation_layers=1,
+        dilation=dilation,
+        n_dilation_layers=n_dilation_layers,
         use_residual_next_state=use_residual_next_state
     )
     
-    # Compile the model with tunable learning rate
-    learning_rate = hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='log')
-    
+    # Compile model
     model.compile(
         optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=learning_rate),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
@@ -55,112 +191,7 @@ def build_tunable_gnn_model(hp, graph_tensor_specification, num_classes=35):
     
     return model
 
-# Function to run hyperparameter tuning
-def tune_gnn_model(graph_tensor_specification, train_ds, val_ds, num_classes=35, max_trials=10, epochs_per_trial=20):
-    """
-    Run hyperparameter tuning for the GNN model
-    
-    Args:
-        graph_tensor_specification: Specification for the input graph tensor
-        train_ds: Training dataset
-        val_ds: Validation dataset
-        num_classes: Number of output classes
-        max_trials: Maximum number of hyperparameter combinations to try
-        epochs_per_trial: Number of epochs to train each trial
-        
-    Returns:
-        The best hyperparameters found
-    """
-    # Define the objective metric to optimize
-    objective = kt.Objective('val_sparse_categorical_accuracy', direction='max')
-    
-    # Create a tuner
-    tuner = kt.BayesianOptimization(
-        lambda hp: build_tunable_gnn_model(hp, graph_tensor_specification, num_classes),
-        objective=objective,
-        max_trials=max_trials,
-        directory='hyperparameter_tuning',
-        project_name='gnn_model_tuning'
-    )
-    
-    # Define early stopping callback for each trial
-    stop_early = tf.keras.callbacks.EarlyStopping(
-        monitor='val_sparse_categorical_accuracy',
-        patience=5,
-        restore_best_weights=True
-    )
-    
-    # Start the search
-    tuner.search(
-        train_ds,
-        validation_data=val_ds,
-        epochs=epochs_per_trial,
-        callbacks=[stop_early]
-    )
-    
-    # Get the best hyperparameters
-    best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-    
-    # Print the best hyperparameters
-    print("Best hyperparameters found:")
-    print(f"initial_nodes_layer_dims: {best_hps.get('initial_nodes_layer_dims')}")
-    print(f"message_dim: {best_hps.get('message_dim')}")
-    print(f"next_state_dim: {best_hps.get('next_state_dim')}")
-    print(f"l2_reg_factor: {best_hps.get('l2_reg_factor')}")
-    print(f"dropout_rate: {best_hps.get('dropout_rate')}")
-    print(f"n_message_passing_layers: {best_hps.get('n_message_passing_layers')}")
-    print(f"use_layer_normalization: {best_hps.get('use_layer_normalization')}")
-    print(f"use_residual_next_state: {best_hps.get('use_residual_next_state')}")
-    print(f"dilation: {best_hps.get('dilation')}")
-    if best_hps.get('dilation'):
-        print(f"n_dilation_layers: {best_hps.get('n_dilation_layers_value')}")
-    print(f"learning_rate: {best_hps.get('learning_rate')}")
-    
-    return best_hps
-
-# Function to build the final model with the best hyperparameters
-def build_best_model(best_hps, graph_tensor_specification, num_classes=35):
-    """
-    Build the model with the best hyperparameters
-    
-    Args:
-        best_hps: Best hyperparameters found by the tuner
-        graph_tensor_specification: Specification for the input graph tensor
-        num_classes: Number of output classes
-        
-    Returns:
-        The model built with the best hyperparameters
-    """
-    # Get n_dilation_layers based on whether dilation is True or False
-    n_dilation_layers = best_hps.get('n_dilation_layers_value', 1) if best_hps.get('dilation') else 1
-    
-    # Build the model with the best hyperparameters
-    best_model = base_gnn.base_gnn_weighted_model(
-        graph_tensor_specification=graph_tensor_specification,
-        initial_nodes_mfccs_layer_dims=best_hps.get('initial_nodes_layer_dims'),
-        message_dim=best_hps.get('message_dim'),
-        next_state_dim=best_hps.get('next_state_dim'),
-        num_classes=num_classes,
-        l2_reg_factor=best_hps.get('l2_reg_factor'),
-        dropout_rate=best_hps.get('dropout_rate'),
-        use_layer_normalization=best_hps.get('use_layer_normalization'),
-        n_message_passing_layers=best_hps.get('n_message_passing_layers'),
-        dilation=best_hps.get('dilation'),
-        n_dilation_layers=n_dilation_layers,
-        use_residual_next_state=best_hps.get('use_residual_next_state')
-    )
-    
-    # Compile the model
-    best_model.compile(
-        optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=best_hps.get('learning_rate')),
-        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        metrics=[tf.keras.metrics.SparseCategoricalAccuracy()]
-    )
-    
-    return best_model
-
-# Modified train function that can be used with the best model
-def train_best_model(model, train_ds, val_ds, test_ds, epochs=50, use_callbacks=True):
+def train_best_model(model, train_ds, val_ds, test_ds, epochs=50):
     """
     Train the model with the best hyperparameters
     
@@ -170,7 +201,6 @@ def train_best_model(model, train_ds, val_ds, test_ds, epochs=50, use_callbacks=
         val_ds: Validation dataset
         test_ds: Test dataset
         epochs: Maximum number of epochs to train
-        use_callbacks: Whether to use callbacks
         
     Returns:
         Training history
@@ -181,14 +211,23 @@ def train_best_model(model, train_ds, val_ds, test_ds, epochs=50, use_callbacks=
             monitor='val_sparse_categorical_accuracy',
             patience=10,
             restore_best_weights=True
-        )
+        ),
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath='best_model_weights.h5',
+            monitor='val_sparse_categorical_accuracy',
+            save_best_only=True,
+            save_weights_only=True
+        ),
+        tf.keras.callbacks.CSVLogger('training_log.csv')
     ]
     
     # Train the model
-    if use_callbacks:
-        history = model.fit(train_ds, validation_data=val_ds, epochs=epochs, callbacks=callbacks)
-    else:
-        history = model.fit(train_ds, validation_data=val_ds, epochs=epochs)
+    history = model.fit(
+        train_ds, 
+        validation_data=val_ds, 
+        epochs=epochs, 
+        callbacks=callbacks
+    )
     
     # Evaluate the model
     test_measurements = model.evaluate(test_ds)
@@ -197,5 +236,42 @@ def train_best_model(model, train_ds, val_ds, test_ds, epochs=50, use_callbacks=
           f"Test Sparse Categorical Accuracy: {test_measurements[1]:.2f}")
     
     return history
+
+def visualize_optuna_results(study):
+    """
+    Visualize the results of the Optuna study.
+    
+    Args:
+        study: Optuna study object
+    """
+    try:
+        # Import visualization modules
+        from optuna.visualization import plot_optimization_history, plot_param_importances
+        from optuna.visualization import plot_contour, plot_slice
+        import matplotlib.pyplot as plt
+        
+        # Plot optimization history
+        fig1 = plot_optimization_history(study)
+        fig1.write_image("optuna_results/optimization_history.png")
+        
+        # Plot parameter importances
+        fig2 = plot_param_importances(study)
+        fig2.write_image("optuna_results/param_importances.png")
+        
+        # Plot contour of parameters (if there are at least 2 parameters)
+        if len(study.best_trial.params) >= 2:
+            fig3 = plot_contour(study)
+            fig3.write_image("optuna_results/contour.png")
+        
+        # Plot slice of parameters
+        fig4 = plot_slice(study)
+        fig4.write_image("optuna_results/slice.png")
+        
+        print("Visualization images saved in 'optuna_results' directory")
+        
+    except ImportError:
+        print("Could not import visualization modules. Install plotly and matplotlib for visualization.")
+    except Exception as e:
+        print(f"Visualization failed with error: {e}")
 
 # Example usage:

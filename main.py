@@ -4,9 +4,10 @@ from utils import utils_data, utils_graph
 from models import base_gnn
 
 import pandas as pd 
-import tensorflow as tf
-import numpy as np
+import tensorflow as tf 
 from tuning_gnn_models import * 
+import random 
+import numpy as np
 
 # Get the tensorflow version
 print(f"Tensorflow version: {tf.__version__}")
@@ -18,7 +19,9 @@ print(f"Tensorflow version: {tf.__version__}")
 
 def main():
     
-    tf.random.set_seed(32) # Possibly change seed if a model isn't working good !
+    tf.random.set_seed(32) # Set for reproducibility of results # Possibly change seed if a model isn't working good !
+    np.random.seed(32)
+    random.seed(32)
 
     SAMPLE_RATE = 16000 # given in the dataset
     FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
@@ -101,7 +104,7 @@ def main():
     # parameters in our create_adjacency_matrix function
 
 
-    N_DILATION_LAYERS = 0
+    N_DILATION_LAYERS = 4
 
     train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
     val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
@@ -128,7 +131,7 @@ def main():
   #  utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
   #  utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
 
-    # utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
+   # utils_data.visualize_mfccs(example_mfcc, label = 1)
 
 
 
@@ -153,9 +156,6 @@ def main():
  
     # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
   
-    train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
-    val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
-    test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
     train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
     val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
     test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
@@ -191,51 +191,52 @@ def main():
    
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec,
+    base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2,
                                                   dilation = False,
                                                   n_dilation_layers= N_DILATION_LAYERS,
-                                                  l2_reg_factor= 1e-4,)
+                                                  l2_reg_factor= 1e-4,
+                                                  )
                                                 #  skip_connection_type= 'sum')
-  #  base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec,
-  #                                                n_message_passing_layers = 2,
-  #                                                dilation = False,
-  #                                                n_dilation_layers= N_DILATION_LAYERS,
-  #                                                l2_reg_factor= 1e-4,
-  #                                                use_residual_next_state= False)
-  #                                              #  skip_connection_type= 'sum')
 
 
 
   #  for layer in base_model.layers:
   #      print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
 
-  #  print(base_model.summary())
+    print(base_model.summary())
 
- #   history = base_gnn.train(model = base_model,
- #                            train_ds = train_ds,
- #                            val_ds = val_ds,
- #                            test_ds = test_ds,
- #                            epochs = 10,
- #                            batch_size = BATCH_SIZE,
- #                            learning_rate = 0.001)
+    history = base_gnn.train(model = base_model,
+                             train_ds = train_ds,
+                             val_ds = val_ds,
+                             test_ds = test_ds,
+                             epochs = 10,
+                             batch_size = BATCH_SIZE,
+                             learning_rate = 0.001)
     
 
   
   
-    # First, run hyperparameter tuning
-    best_hps = tune_gnn_model(
-        graph_tensor_specification=graphs_spec,
+    
+    
+    """
+    # Run the Optuna study
+    best_params, study = create_optuna_study(
+        gnn_model = base_gnn.base_gnn_weighted_model,
+        graph_tensor_specification= graphs_spec,
         train_ds=train_ds,
         val_ds=val_ds,
         num_classes=35,
-        max_trials=10,
-        epochs_per_trial=20
+        n_trials=10  # Start with a small number to verify functionality
     )
 
-    # Build the best model
-    best_model = build_best_model(
-        best_hps=best_hps,
+    # Visualize results
+    visualize_optuna_results(study)
+
+    # Build the model with the best parameters
+    best_model = build_model_with_best_params(
+        best_params=best_params,
+        gnn_model = base_gnn.base_gnn_weighted_model,
         graph_tensor_specification=graphs_spec,
         num_classes=35
     )
@@ -246,12 +247,10 @@ def main():
         train_ds=train_ds,
         val_ds=val_ds,
         test_ds=test_ds,
-        epochs=50,
-        use_callbacks=True
+        epochs=50
     )
 
-      
-
+    """
 
     # Confusion matrix visualization
 
