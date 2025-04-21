@@ -4,7 +4,8 @@ from utils import utils_data, utils_graph
 from models import base_gnn
 
 import pandas as pd 
-import tensorflow as tf 
+import tensorflow as tf
+import numpy as np
 
 # Get the tensorflow version
 print(f"Tensorflow version: {tf.__version__}")
@@ -117,13 +118,13 @@ def main():
     # Adjacency test
     # utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
 
-    spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000)
-    num_spectrogram_bins = tf.shape(spectrogram)[-1]  
-    filters = utils_data.create_gammatone_filterbank_tf(num_filters=32, sample_rate=16000, 
-                               min_freq=100, max_freq=8000, fft_size=FRAME_LENGTH)
-  #  utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
+    spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 
+    gam_filters = utils_data.create_gammatone_filterbank(fft_size=FRAME_LENGTH)
+    # utils_data.visualize_filterbank(gam_filters, spectrogram = spectrogram, gammatone = True)
+    _ , mel_filters = utils_data.apply_mel_filterbanks(spectrogram)
+    # utils_data.visualize_filterbank(mel_filters, spectrogram = spectrogram)
 
-   # utils_data.visualize_mfccs(example_mfcc, label = 1)
+    # utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
 
 
 
@@ -148,17 +149,17 @@ def main():
  
     # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
   
- #   train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
- #   val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
- #   test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+    test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
 
 
 
     # TESTING MODE
     
-    train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
-    val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
-    test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+  #  train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+  #  val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+ #   test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
 
     # Now batch
 
@@ -183,7 +184,7 @@ def main():
    
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_hierarchical_model(graph_tensor_specification = graphs_spec,
+    base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2,
                                                   dilation = False,
                                                   n_dilation_layers= N_DILATION_LAYERS,
@@ -201,11 +202,26 @@ def main():
                              train_ds = train_ds,
                              val_ds = val_ds,
                              test_ds = test_ds,
-                             epochs = 10,
+                             epochs = 1,
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
     
+    
 
+    # Confusion matrix visualization
+
+    y_pred = []
+    y_true = []
+
+    for x, y in test_ds:
+        predictions = base_model.predict(x)
+        y_pred.extend(np.argmax(predictions, axis=1))
+        y_true.extend(y.numpy())
+
+    y_pred = np.array(y_pred)
+    y_true = np.array(y_true)
+
+    utils_data.visualize_confusion_matrix(y_pred, y_true)
 
 if __name__ == '__main__':
     main()

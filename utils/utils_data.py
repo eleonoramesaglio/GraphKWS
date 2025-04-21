@@ -12,6 +12,8 @@ from pathlib import Path
 import sounddevice as sd
 from utils_spec_augmentation import *
 from scipy.signal import gammatone
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
 
 
 
@@ -1092,10 +1094,18 @@ def visualize_mfccs(mfccs, label, gammatone = False):
     plt.show()
 
 
- 
-
-# TODO : normalization of audio ?
-
+def visualize_confusion_matrix(y_pred, y_true):
+    cm = confusion_matrix(y_pred, y_true, normalize="true")
+    plt.figure(figsize=(16, 14))
+    class_names = ["backward", "bed", "bird", "cat", "dog", "down", "eight", "five", "follow", "forward", "four", "go", "happy", "house", 
+                   "learn", "left", "marvin", "nine", "no", "off", "on", "one", "right", "seven", "sheila", "six", "stop", "three", "tree",
+                   "two", "up", "visual", "wow", "yes", "zero"]
+    sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', xticklabels=class_names, yticklabels=class_names)
+    plt.xlabel('Predicted label')
+    plt.ylabel('True label')
+    plt.title('Confusion Matrix')
+    plt.show()
+    
 
 
 
