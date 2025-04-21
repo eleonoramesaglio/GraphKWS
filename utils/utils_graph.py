@@ -202,23 +202,6 @@ def create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2):
 
 
 
-"""
-def dilated_adjacency_matrix_with_weights(dilated_adjacency_matrix, mfccs, num_frames):
-
-    '''
-    Add weights to the dilated adjacency matrix based on the cosine similarity between node features.
-
-    '''
-
-    similarity_matrix = similarity_function(mfccs, num_frames, alpha=0.7, beta=0.1)
-    dilated_adjacency_matrix = tf.where(dilated_adjacency_matrix > 0, similarity_matrix, dilated_adjacency_matrix)
-
-    return dilated_adjacency_matrix
-"""
-#TODO: There are other ways to assign weights to the edges! 
-
-
-
 
 def normalized_cosine_similarity(mfccs, num_frames):
 
@@ -360,27 +343,13 @@ def convert_tensor_to_networkx(graph_tensor):
     
 
 
-#TODO: I need to choose a reference graph for the layout if I want to have comparable graphs throughout the dataset
-
-#Here are some examples of layouts:
-
-def grid_node_layout(G):
-    pos = {}
-    for node in G.nodes():
-        x = node % 10  # Creates a grid with 10 columns
-        y = node // 10
-        pos[node] = (x, y)
-    return pos
-# Disadvantage: we are able to see the connections between all the nodes (the ones aligned in the same row)
 
 def node_layout(G):
-    # pos = nx.random_layout(G, seed = 123)  # Random layout
     pos = nx.spring_layout(G, k=0.15, iterations=25, weight = 'weight', seed=42)  # force-directed algorithm (bigger weights -> closer nodes)
     # pos = nx.circular_layout(G)  # Circular layout
     # pos = nx.spectral_layout(G)  # Spectral layout
-    # pos = nx.multipartite_layout(G, subset_key= 10)
+    # pos = nx.random_layout(G, seed = 123)  # Random layout
     return pos
-
 
 
 def visualize_graph(G, pos, title):

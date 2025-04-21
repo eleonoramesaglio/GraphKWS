@@ -114,8 +114,8 @@ def main():
         example_adjacency_matrix = adjacency_matrices[0]
 
     
-    # Visualize the adjacency matrix
-  #  utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
+    # Adjacency test
+    # utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
 
     spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000)
     num_spectrogram_bins = tf.shape(spectrogram)[-1]  
@@ -125,21 +125,23 @@ def main():
 
    # utils_data.visualize_mfccs(example_mfcc, label = 1)
 
+
+
+    # Graph test
     graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
-    #print(f"Graph example shape: {graph_example.shape}")
-      
+    # print(f"Graph example shape: {graph_example.shape}")
     print(f"Graph example: {graph_example}")
     print("Edges:", graph_example.edge_sets["connections"].adjacency)
-
-
     networkx_graph = utils_graph.convert_tensor_to_networkx(graph_example)
     pos = utils_graph.node_layout(networkx_graph)
-   # utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
+    # utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
 
 
-   # dilated = utils_graph.create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2)
-   # dilated = utils_graph.dilated_adjacency_matrix_with_weights(dilated, example_mfcc, num_frames=N_FRAMES)
-   # utils_graph.visualize_adjacency_matrix(dilated, title="Adjacency Matrix")
+
+    # Dilated test
+    # dilated = utils_graph.create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2)
+    # dilated = utils_graph.dilated_adjacency_matrix_with_weights(dilated, example_mfcc, num_frames=N_FRAMES)
+    # utils_graph.visualize_adjacency_matrix(dilated, title="Adjacency Matrix")
     
 
 
