@@ -66,6 +66,96 @@ def mfccs_to_graph_tensors_for_dataset_OLD(mfcc, adjacency_matrices, label):
 
 
 
+def mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label):
+
+    """
+    
+    Two node sets : One normal (98 Frames) , other one 10 nodes (or can be changed
+    dynamically in size) for clustering ; else everything the same
+    
+    """
+    # Ensure current shape of MFCC (98 frames, 39 MFCCs)
+    mfcc_static = tf.reshape(mfcc, [98, 39])
+
+    cluster_features_static = tf.ones([10,1], dtype = tf.float32)
+
+    # Create 
+    
+    # Create the node set that will be shared by all edge sets
+    node_sets = {
+        "frames": tfgnn.NodeSet.from_fields(
+            features={"features": mfcc_static},  
+            sizes=[tf.shape(mfcc_static)[0]]
+        ),
+        "clusters" : tfgnn.NodeSet.from_fields(
+            features = {"features" : cluster_features_static},
+            sizes = [tf.shape(cluster_features_static)[0]]
+        )
+    }
+    
+    # Create an edge set for each adjacency matrix
+    edge_sets = {}
+    
+
+    # Create the directed 98x10 (i.e. just from the 98 nodes to the 10)
+
+    adj_matrix_f_to_c = tf.ones(shape = (98,10))
+
+    edges_f_to_c = tf.where(adj_matrix_f_to_c > 0)
+
+    weights_f_to_c = tf.gather_nd(adj_matrix_f_to_c, edges_f_to_c)
+
+    sources_f_to_c = edges_f_to_c[:, 0]
+    targets_f_to_c = edges_f_to_c[:, 1]
+
+
+
+    edge_sets["frames_to_clusters"] = tfgnn.EdgeSet.from_fields(
+        features = {"weights" : weights_f_to_c},
+        sizes = [tf.shape(edges_f_to_c)[0]],
+        adjacency = tfgnn.Adjacency.from_indices(
+            source =("frames", sources_f_to_c),
+            target = ("clusters", targets_f_to_c)
+        )
+
+    )
+
+    # Unstack the matrices so we can iterate over them
+    unstacked_matrices = tf.unstack(adjacency_matrices, axis=0)
+
+    for i, adjacency_matrix in enumerate(unstacked_matrices):
+        # Get edges from this adjacency matrix
+        edges = tf.where(adjacency_matrix > 0)
+        
+        # Get corresponding weights
+        weights = tf.gather_nd(adjacency_matrix, edges)
+
+      #  weights = tf.reshape(weights, [-1, 1])
+        
+        # Extract source and target indices
+        sources = edges[:, 0]
+        targets = edges[:, 1]
+        
+        # Create edge set with unique names
+        edge_set_name = f"connections_{i}"
+        
+        edge_sets[edge_set_name] = tfgnn.EdgeSet.from_fields(
+            features={"weights" : weights}, 
+            sizes=[tf.shape(edges)[0]],
+            adjacency=tfgnn.Adjacency.from_indices(
+                source=("frames", sources),
+                target=("frames", targets)
+            )
+        )
+    
+    # Create the graph tensor with all node sets and edge sets
+    graph_tensor = tfgnn.GraphTensor.from_pieces(
+        node_sets=node_sets,
+        edge_sets=edge_sets
+    )
+    
+    return graph_tensor, label
+
 def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label):
     """
     Convert MFCC features and adjacency matrices to a graph tensor where
@@ -185,7 +275,6 @@ def mfccs_to_graph_tensors(mfccs, adjacency_matrices):
 
     
     return graph_tensor
-
 
 
 
@@ -945,32 +1034,59 @@ def base_GATv2_model(
 
 
 
-
-
-    # TODO : understand : the initial node state is also learnt during training ? should be, but then is 64 dims ever used
-    # or basically one the message_passing_dim all the time ? 
-    # Define the initial hidden states for the nodes
-    def set_initial_node_state(node_set,node_set_name):
+    # Also try again on the normal initial node setting, so just with Dense Layer ;
+    # TODO : make these hyperparams of each model, so we can decide which initial node state
+    # function we want to call (for easier testing later on)
+    # ResNet like initial node set
+    '''
+    def set_initial_node_state(node_set, node_set_name):
         """
-        Initialize hidden states for nodes in the graph.
+        A different approach : ResNet style initial setting using conv layers over the MFCCs
         
-        Args:
-            node_set: A dictionary containing node features
-            node_set_name: The name of the node set (e.g., "frames")
-            
-        Returns:
-            A transformation function applied to the node features
         """
         if node_set_name == "frames":
-            # Apply a dense layer to transform MFCC features into hidden states
-            # Instead of just one dense layer , we can also directly use dropout etc. here (if we wish so) 
-            return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                node_set["features"] 
-            )
-        else:
-            # Handle any other node types
-            raise ValueError(f"Unknown node set: {node_set_name}")
+            # Input features
+            x = node_set["features"]
+
+            # We need to reshape for Conv1d ; automatically, Conv1D is set to "channels_last" , 
+            # so we expand the last dim such that we have a single channel dimension
+
+            x = tf.expand_dims(x, -1)
             
+            # First conv block
+            conv1 = tf.keras.layers.Conv1D(16, kernel_size=3, padding='same')(x)
+            conv1 = tf.keras.layers.BatchNormalization()(conv1)
+            conv1 = tf.keras.layers.Activation('relu')(conv1)
+            
+            # Second conv block with residual connection
+            conv2 = tf.keras.layers.Conv1D(16, kernel_size=3, padding='same')(conv1)
+            conv2 = tf.keras.layers.BatchNormalization()(conv2)
+            conv2 = tf.keras.layers.Activation('relu')(conv2)
+            
+            # Residual connection
+            res_output = tf.keras.layers.Add()([conv1, conv2])
+            
+            # Final processing
+            # Flatten again such that we can apply the dense layer
+            flatten = tf.keras.layers.Flatten()(res_output)
+            return dense(initial_nodes_mfccs_layer_dims, activation = "relu")(flatten)
+        
+    '''
+
+    def set_initial_node_state(node_set, node_set_name):
+        if node_set_name == "frames":
+            x = node_set["features"]
+
+            x = tf.expand_dims(x, -1)
+
+            conv_out = tf.keras.layers.Conv1D(16, kernel_size = 3, padding="same")(x)
+
+            flattened_out = tf.keras.layers.Flatten()(conv_out)
+
+            return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation = "relu")(flattened_out)
+
+
+
     def set_initial_edge_state(edge_set, edge_set_name):
         """
         Initialize hidden states for edges in the graph
@@ -1820,6 +1936,357 @@ def base_gnn_weighted_model(
     
     model = tf.keras.Model(input_graph, logits)
 
+
+    return model 
+
+
+def base_gnn_hierarchical_model(
+        graph_tensor_specification,
+        initial_nodes_mfccs_layer_dims = 64,
+        initial_nodes_clusters_layer_dims = 64,
+        initial_edges_weights_layer_dims = [16],
+        message_dim = 128,
+        next_state_dim = 128,
+        num_classes = 35,
+        l2_reg_factor = 6e-6,
+        dropout_rate = 0.2,
+        use_layer_normalization = True,
+        n_message_passing_layers = 4,
+        dilation = False,
+        n_dilation_layers = 2,
+
+
+        ):
+    
+
+    """
+    
+    Initial Node Set : 98 Frames ; Edges there : Using normal methods (e.g. weighted using our cosine window approach)
+    Second Node Set : 10 Nodes ; Edges there : Directed edges from all the 98 nodes to the 10 nodes (i.e. just send information in one direction) , where we learn the edge features
+                # Idea is that this simulates a clustering approach
+    Finally : Send clustered messages to context node, using an attention mechanism (hope is that clustered information is easier "separable" for attention mechanism), while working
+    on all 98 nodes with the attention mechanism (as in base GATv2 model) might be not optimal ; also, we have less needed parameters for the attention mechanism (but more therefore
+    for the learnt edges between the two node sets)
+ 
+    
+    """
+    
+
+    # Input is the graph structure 
+    input_graph = tf.keras.layers.Input(type_spec = graph_tensor_specification)
+
+    # Convert to scalar GraphTensor
+    graph = tfgnn.keras.layers.MapFeatures()(input_graph)
+
+    is_batched = (graph.spec.rank == 1)
+
+    if is_batched:
+        batch_size = graph.shape[0]
+        graph = graph.merge_batch_to_components()
+
+
+    # Define the initial hidden states for the nodes
+    def set_initial_node_state(node_set,node_set_name):
+        """
+        Initialize hidden states for nodes in the graph.
+        
+        Args:
+            node_set: A dictionary containing node features
+            node_set_name: The name of the node set (e.g., "frames")
+            
+        Returns:
+            A transformation function applied to the node features
+        """
+
+
+        def dense_inner(units, use_layer_normalization = False, normalization_type = "normal"):
+            regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+            result = tf.keras.Sequential([
+                tf.keras.layers.Dense(
+                    units,
+                    activation = "relu",
+                    use_bias = True,
+                    kernel_regularizer = regularizer,
+                    bias_regularizer = regularizer),
+                tf.keras.layers.Dropout(dropout_rate)])
+            if use_layer_normalization:
+                if normalization_type == 'normal':
+                    result.add(tf.keras.layers.LayerNormalization())
+                elif normalization_type == 'group':
+                    result.add(tf.keras.layers.GroupNormalization(message_dim))
+            return result 
+
+
+        if node_set_name == "frames":
+
+
+            features = node_set["features"]
+
+            # Split the diff. features such that we can do separate layer learning
+
+
+            # TODO : try to do base mfcc + its energy, delta + energy, delta-delta + energy
+            base_mfccs = features[: , 0:12]
+            delta_mfccs = features[: , 12:24]
+            delta_delta_mfccs = features[:, 24:36]
+            energy_features = features[:, 36:39]
+
+            base_processed = dense_inner(24, use_layer_normalization=True)(base_mfccs)
+            delta_processed = dense_inner(24, use_layer_normalization=True)(delta_mfccs)
+            delta_delta_processed = dense_inner(24, use_layer_normalization=True)(delta_delta_mfccs)
+            energy_processed = dense_inner(8, use_layer_normalization=True)(energy_features)
+
+            # Concatenate the processed features
+            combined_features = tf.keras.layers.Concatenate()(
+                [base_processed, delta_processed, delta_delta_processed, energy_processed]
+            )
+            
+
+
+            return dense_inner(initial_nodes_mfccs_layer_dims, use_layer_normalization=True)(combined_features)
+            
+
+        elif node_set_name == "clusters":
+
+            features = node_set["features"]
+
+
+            # Possibly other modes (i.e. uniformly values between 0 & 1 for initial etc. ; don't know whats
+            # best for our use case here)
+            return dense_inner(initial_nodes_clusters_layer_dims, use_layer_normalization= True)(features)
+
+        
+        else:
+            # Handle any other node types
+            raise ValueError(f"Unknown node set: {node_set_name}")
+        
+    # Needs to be done such that we can learn on the edge weights 
+    def map_edge_features(edge_set, edge_set_name):
+        if edge_set_name == "frames_to_clusters":
+            return {"weights": tf.expand_dims(edge_set["weights"], axis=-1)}
+        return edge_set.features
+
+    graph = tfgnn.keras.layers.MapFeatures(
+        edge_sets_fn=map_edge_features
+    )(graph)
+        
+            
+    def set_initial_edge_state(edge_set, edge_set_name):
+        """
+        Initialize edge states, with special handling for frames_to_clusters edges.
+        For frames_to_clusters, we use a simple learnable scalar weight (0-1).
+        
+        Args:
+            edge_set: Edge set features
+            edge_set_name: Name of the edge set
+            
+        Returns:
+            Transformed edge features
+        """
+        if edge_set_name == "frames_to_clusters":
+
+            initial_weights = edge_set["weights"]
+            
+            # Create a learnable parameter for each edge
+            # We use a single dense layer without bias and with sigmoid activation
+            # to ensure the weights stay between 0 and 1
+            learnable_weights = tf.keras.layers.Dense(
+                units=1,               # Just one scalar value per edge
+                activation="sigmoid",  # Keeps weights between 0-1
+                use_bias=False,        # No need for bias
+                kernel_initializer="glorot_uniform",  # Good for sigmoid
+                kernel_regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+            )(initial_weights)
+            
+
+            return learnable_weights
+        
+
+
+
+    def set_initial_context_state(context):
+        """
+        Initialize hidden state for the context of the graph (i.e. the whole graph)
+        
+        """
+
+
+        return tfgnn.keras.layers.MakeEmptyFeature()(context)
+
+
+        
+
+    graph = tfgnn.keras.layers.MapFeatures(
+        node_sets_fn = set_initial_node_state,
+        edge_sets_fn= set_initial_edge_state,
+        context_fn= set_initial_context_state,
+          name = 'init_states')(graph)
+    
+
+    
+    # Let us now build some basic building blocks for our model
+    def dense(units, use_layer_normalization = False, activation = "relu", normalization_type = "normal"):
+        """ Dense layer with regularization (L2 & Dropout) & normalization"""
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+        result = tf.keras.Sequential([
+            tf.keras.layers.Dense(
+                units,
+                activation = activation,
+                use_bias = True,
+                kernel_regularizer = regularizer,
+                bias_regularizer = regularizer),
+            tf.keras.layers.Dropout(dropout_rate)])
+        if use_layer_normalization:
+            if normalization_type == 'normal':
+                result.add(tf.keras.layers.LayerNormalization())
+            elif normalization_type == 'batch':
+                result.add(tf.keras.layers.BatchNormalization(message_dim))
+        return result 
+    
+
+
+
+    def gat_convolution(num_heads, receiver_tag):
+        # Here we now use a GAT layer
+
+        regularizer = tf.keras.regularizers.l2(l2_reg_factor)
+
+
+        return  GATv2Conv(
+            num_heads = num_heads,
+            per_head_channels = 128, # dimension of vector of output of each head
+            heads_merge_type = 'concat', # how to merge the heads
+            receiver_tag = receiver_tag, # also possible nodes/edges ; see documentation of function !
+            receiver_feature = tfgnn.HIDDEN_STATE,
+            sender_node_feature = tfgnn.HIDDEN_STATE,
+            sender_edge_feature= None,
+            kernel_regularizer= regularizer,
+
+
+        )
+    
+
+
+    
+
+
+  
+    class WeightedSumConvolution(tf.keras.layers.Layer):
+
+        def __init__(self, message_dim, receiver_tag, sender_edge_feature = tfgnn.HIDDEN_STATE, mode = "frame_to_frame"):
+            super().__init__()
+            self.message_dim = message_dim
+            self.receiver_tag = receiver_tag
+            self.sender_tag = tfgnn.SOURCE if receiver_tag == tfgnn.TARGET else tfgnn.TARGET
+            self.dense = dense(units = message_dim, use_layer_normalization = use_layer_normalization)
+            self.sender_edge_feature = sender_edge_feature 
+            self.mode = mode
+  
+        
+        def call(self, graph, edge_set_name):
+            # Get node states
+            messages = tfgnn.broadcast_node_to_edges(
+                graph,
+                edge_set_name,
+                self.sender_tag,
+                feature_name="hidden_state") # Take the hidden state of the node
+            
+            # Get edge weights
+            if self.mode == "frame_to_frame":
+                weights = graph.edge_sets[edge_set_name].features['weights']
+            
+            if self.mode == "frame_to_cluster":
+                weights = graph.edge_sets[edge_set_name].features[self.sender_edge_feature]
+            
+            # Apply weights to messages
+            if self.mode == "frame_to_frame":
+                weighted_messages = tf.expand_dims(weights, -1) * messages
+            
+            if self.mode == "frame_to_cluster":
+                # Already expanded, as we did the MapFeature for the weights at the beginning (since this is needed such that 
+                # we can work with trainable edge weights (or, more specifically, their hidden features))
+                weighted_messages = weights * messages
+            
+            # Pool messages to target nodes
+            pooled_messages = tfgnn.pool_edges_to_node(
+                graph,
+                edge_set_name,
+                self.receiver_tag,
+                reduce_type='sum',
+                feature_value=weighted_messages)
+            
+ 
+
+
+            # Transform pooled messages
+            return self.dense(pooled_messages)
+    
+    
+    def next_state_edges(use_layer_normalization):
+        return tfgnn.keras.layers.NextStateFromConcat(dense(1, activation = "sigmoid", use_layer_normalization= False))
+
+    
+
+    def next_state(next_state_dim, use_layer_normalization):
+        return tfgnn.keras.layers.NextStateFromConcat(dense(next_state_dim, use_layer_normalization=use_layer_normalization))
+    
+    if not dilation:
+        n_dilation_layers = 1
+
+    for i in range(n_message_passing_layers):
+        dil_layer_num = i % n_dilation_layers # circular usage of dilated adjacency matrices throughout message passing layers
+        graph = tfgnn.keras.layers.GraphUpdate(
+            node_sets = {
+                "frames" : tfgnn.keras.layers.NodeSetUpdate(
+                    {f"connections_{dil_layer_num}" : WeightedSumConvolution(message_dim, tfgnn.TARGET, mode = "frame_to_frame")},
+                next_state(next_state_dim, use_layer_normalization)
+                ),
+            # TODO : this leads to problems... no gradient flow
+                "clusters" : tfgnn.keras.layers.NodeSetUpdate(
+                    {"frames_to_clusters" : WeightedSumConvolution(message_dim = message_dim, receiver_tag = tfgnn.TARGET, mode = "frame_to_cluster")}, # set to target, such that the sender are the 98 initial nodes!
+                next_state(next_state_dim= next_state_dim, use_layer_normalization = use_layer_normalization)
+                )
+            },
+
+            edge_sets = {
+                "frames_to_clusters" : tfgnn.keras.layers.EdgeSetUpdate(
+                    next_state = next_state_edges(use_layer_normalization),
+                    edge_input_feature = tfgnn.HIDDEN_STATE
+                  
+                )
+            },
+                
+        )(graph)
+
+
+    # Finally, apply attention mechanism (here we try outside of message passing, such that we don't have so many parameters)
+
+    graph = tfgnn.keras.layers.GraphUpdate(
+        
+        context = tfgnn.keras.layers.ContextUpdate(
+            {
+                "clusters" : gat_convolution(num_heads= 2, receiver_tag = tfgnn.CONTEXT)
+            },
+            next_state(next_state_dim, use_layer_normalization)
+        
+    )
+    
+    )(graph)
+
+
+
+    # Get the current context state (has shape (batch_size, 128) , where 128 is the message_passing_dimension)
+    # This represents the master node, which is updated in each message passing layer !
+    context_state = graph.context.features['hidden_state']
+
+    # Dropout # TODO: like in speechreco paper, see if it works/ m
+  #  context_state = tf.keras.layers.Dropout(dropout_rate)(context_state)
+
+    logits = tf.keras.layers.Dense(num_classes)(context_state)
+
+
+    
+    model = tf.keras.Model(input_graph, logits)
 
     return model 
 
