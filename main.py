@@ -1,6 +1,6 @@
 import os
 os.environ["TF_USE_LEGACY_KERAS"] = "1" # needed for tfgnn
-from utils import utils_data, utils_graph
+from utils import utils_data, utils_graph, utils_metrics
 from models import base_gnn
 
 import pandas as pd 
@@ -212,6 +212,7 @@ def main():
 
     print(base_model.summary())
 
+
     history = base_gnn.train(model = base_model,
                              train_ds = train_ds,
                              val_ds = val_ds,
@@ -221,7 +222,7 @@ def main():
                              learning_rate = 0.001)
     
 
-  
+    utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'])
   
     
     
@@ -260,18 +261,18 @@ def main():
 
     # Confusion matrix visualization
 
-    y_pred = []
-    y_true = []
+    y_pred, y_true = utils_metrics.get_ys(test_ds, base_model)
+    utils_metrics.visualize_confusion_matrix(y_pred, y_true)
 
-    for x, y in test_ds:
-        predictions = base_model.predict(x)
-        y_pred.extend(np.argmax(predictions, axis=1))
-        y_true.extend(y.numpy())
+    # Precision, Recall, F1-score
+    utils_metrics.metrics_evaluation(y_pred, y_true, model_name = "Base GCN")
 
-    y_pred = np.array(y_pred)
-    y_true = np.array(y_true)
+    
 
-    utils_data.visualize_confusion_matrix(y_pred, y_true)
+    
+
+
+
 
 if __name__ == '__main__':
     main()

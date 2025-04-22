@@ -3,6 +3,7 @@ import tensorflow_gnn as tfgnn
 import numpy as np 
 from tensorflow_gnn.models.gcn import gcn_conv
 from tensorflow_gnn.models.gat_v2.layers import GATv2Conv
+from utils import utils_metrics
 #tf.config.run_functions_eagerly(True) 
 #tf.data.experimental.enable_debug_mode()
 
