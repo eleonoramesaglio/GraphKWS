@@ -1,8 +1,10 @@
 import matplotlib.pyplot as plt
+import tensorflow as tf
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+from IPython.display import clear_output
 
 
 
@@ -59,3 +61,42 @@ def metrics_evaluation(y_pred, y_true, model_name):
 
     # Display the table
     print(metrics_df)
+
+
+
+def plot_history(history, columns=['loss', 'sparse_categorical_accuracy']):
+    """
+    Plot training history after model has been trained.
+    
+    Parameters:
+    - history: History object returned by model.fit()
+    - columns: List of metrics to plot (default: ['loss', 'sparse_categorical_accuracy'])
+    """
+    # Create subplots
+    if len(columns) > 1:
+        fig, axes = plt.subplots(len(columns), 1, figsize=(8, 5*len(columns)))
+    else:
+        fig, axes = plt.subplots(1, 1, figsize=(8, 5))
+        axes = [axes]  # Make it a list for consistent indexing
+    
+    for i, column in enumerate(columns):
+        if column not in history.history:
+            print(f"Warning: '{column}' not found in history. Available metrics: {list(history.history.keys())}")
+            continue
+            
+        ax = axes[i]
+        ax.plot(history.history[column], label='training', color='blue', linewidth=1.5)
+        
+        val_column = 'val_'+column
+        if val_column in history.history:
+            ax.plot(history.history[val_column], label='validation', color='firebrick', linewidth=1.5)
+        
+        ax.set_xticks(range(len(history.history[column])))
+        ax.set_xticklabels(range(1, len(history.history[column])+1))
+        ax.set_xlabel('epoch')
+        ax.grid(alpha=0.5)
+        ax.set_ylabel(column)
+        ax.legend(edgecolor='black', facecolor='linen', fontsize=12, loc='best')
+
+    plt.tight_layout()
+    plt.show()

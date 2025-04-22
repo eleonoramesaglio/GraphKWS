@@ -206,6 +206,7 @@ def main():
 
     print(base_model.summary())
 
+
     history = base_gnn.train(model = base_model,
                              train_ds = train_ds,
                              val_ds = val_ds,
@@ -215,7 +216,7 @@ def main():
                              learning_rate = 0.001)
     
 
-  
+    utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'])
   
     
     
