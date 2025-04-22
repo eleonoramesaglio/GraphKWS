@@ -8,6 +8,7 @@ import tensorflow as tf
 from tuning_gnn_models import * 
 import random 
 import numpy as np
+import tensorflow_models as tfm 
 
 # Get the tensorflow version
 print(f"Tensorflow version: {tf.__version__}")
@@ -19,7 +20,8 @@ print(f"Tensorflow version: {tf.__version__}")
 
 def main():
     
-    tf.random.set_seed(32) # Set for reproducibility of results # Possibly change seed if a model isn't working good !
+    # Set for reproducibility of results 
+    tf.random.set_seed(32) 
     np.random.seed(32)
     random.seed(32)
 
@@ -104,7 +106,7 @@ def main():
     # parameters in our create_adjacency_matrix function
 
 
-    N_DILATION_LAYERS = 4
+    N_DILATION_LAYERS = 2
 
     train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
     val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
@@ -191,16 +193,20 @@ def main():
    
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
+    base_model = base_gnn.GAT_GCN_model(graph_tensor_specification = graphs_spec,
                                                   n_message_passing_layers = 2,
+                                                #  use_residual_next_state = True,
+                                                  initial_nodes_mfccs_layer_dims= 64,
                                                   dilation = False,
-                                                  n_dilation_layers= N_DILATION_LAYERS,
+                                                  n_dilation_layers= 0,
                                                   l2_reg_factor= 1e-4,
                                                   )
                                                 #  skip_connection_type= 'sum')
 
 
+   # flop_count = tfm.core.train_utils.try_count_flops(model = base_model, inputs_kwargs = {"input" : graphs_spec}, output_path = 'results.txt')
 
+  #  print(flop_count)
   #  for layer in base_model.layers:
   #      print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
 
@@ -210,7 +216,7 @@ def main():
                              train_ds = train_ds,
                              val_ds = val_ds,
                              test_ds = test_ds,
-                             epochs = 10,
+                             epochs = 50,
                              batch_size = BATCH_SIZE,
                              learning_rate = 0.001)
     
