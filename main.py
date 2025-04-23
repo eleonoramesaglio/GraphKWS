@@ -2,6 +2,7 @@ import os
 os.environ["TF_USE_LEGACY_KERAS"] = "1" # needed for tfgnn
 from utils import utils_data, utils_graph, utils_metrics
 from models import base_gnn
+import matplotlib 
 
 import pandas as pd 
 import tensorflow as tf 
@@ -9,6 +10,7 @@ from tuning_gnn_models import *
 import random 
 import numpy as np
 import tensorflow_models as tfm 
+
 
 # Get the tensorflow version
 print(f"Tensorflow version: {tf.__version__}")
@@ -19,11 +21,8 @@ print(f"Tensorflow version: {tf.__version__}")
 
 
 def main():
-    
-    # Set for reproducibility of results 
-    tf.random.set_seed(32) 
-    np.random.seed(32)
-    random.seed(32)
+
+
 
     SAMPLE_RATE = 16000 # given in the dataset
     FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
@@ -33,7 +32,7 @@ def main():
     # Load data
     train_files, train_labels, val_files, val_labels, test_files, test_labels, class_to_index = utils_data.load_audio_dataset(data_dir = 'speech_commands_v0.02',
                                                                                                                     validation_file = 'speech_commands_v0.02/validation_list.txt',
-                                                                                                                      test_file = 'speech_commands_v0.02/testing_list.txt')
+                                                                                                                    test_file = 'speech_commands_v0.02/testing_list.txt')
     
 
     # Check the data split (predefined in the text files)
@@ -57,14 +56,14 @@ def main():
     
     # noise = True to match 2015 google paper ; possibly do a comparison with noise = False
     train_ds, val_ds, test_ds = utils_data.create_tf_dataset(train_files, train_labels, sample_rate= SAMPLE_RATE, 
-                                                             frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'train', gammatone = True, noise = True, noise_prob = 0.8, spec_augmentation = True),\
+                                                            frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
+                                                            mode = 'train', gammatone = True, noise = True, noise_prob = 0.8, spec_augmentation = False, freq_param = 6, time_param = 12, spec_prob = 0.8),\
                                 utils_data.create_tf_dataset(val_files, val_labels,sample_rate= SAMPLE_RATE, 
-                                                             frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'val', gammatone = True, noise = False, spec_augmentation = False),\
+                                                            frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
+                                                            mode = 'val', gammatone = True, noise = False, spec_augmentation = False),\
                                 utils_data.create_tf_dataset(test_files, test_labels, sample_rate= SAMPLE_RATE, 
-                                                             frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                              mode = 'test', gammatone = True, noise = False, spec_augmentation = False)
+                                                            frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
+                                                            mode = 'test', gammatone = True, noise = False, spec_augmentation = False)
     
 
 
@@ -89,9 +88,9 @@ def main():
     _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', threshold= 0, cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
 
 
-   # utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
+# utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
 
-   # utils_data.visualize_single_waveform(example_wav, label = 1)
+# utils_data.visualize_single_waveform(example_wav, label = 1)
     
 
 
@@ -106,7 +105,7 @@ def main():
     # parameters in our create_adjacency_matrix function
 
 
-    N_DILATION_LAYERS = 2
+    N_DILATION_LAYERS = 0
 
     train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
     val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
@@ -114,7 +113,7 @@ def main():
     # Check the shape of the dataset
     for mfcc, adjacency_matrices, label in train_ds.take(1):
         print(f"MFCC shape: {mfcc.shape}")
- 
+
 
         print(f"Label shape: {label.shape}")
         example_mfcc = mfcc
@@ -126,14 +125,14 @@ def main():
 
     spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 
     gam_filters = utils_data.create_gammatone_filterbank(fft_size=FRAME_LENGTH)
-  #  utils_data.visualize_filterbank(gam_filters, spectrogram = spectrogram, gammatone = True)
+#  utils_data.visualize_filterbank(gam_filters, spectrogram = spectrogram, gammatone = True)
     _ , mel_filters = utils_data.apply_mel_filterbanks(spectrogram)
-  #  utils_data.visualize_filterbank(mel_filters, spectrogram = spectrogram)
+#  utils_data.visualize_filterbank(mel_filters, spectrogram = spectrogram)
 
-  #  utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
-  #  utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
+#  utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
+#  utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
 
-   # utils_data.visualize_mfccs(example_mfcc, label = 1)
+# utils_data.visualize_mfccs(example_mfcc, label = 1)
 
 
 
@@ -155,9 +154,9 @@ def main():
     
 
 
- 
+
     # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
-  
+
     train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
     val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
     test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
@@ -166,9 +165,9 @@ def main():
 
     # TESTING MODE
     
-  #  train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
-  #  val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
-  #  test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+#  train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+#  val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
+#  test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, label))
 
     # Now batch
 
@@ -190,75 +189,88 @@ def main():
 
     # Note : GCN residual block we didn't implement the dilation mode
 
-   
+
+    # Reduce multiplies by : less number of edges
+
+    # Tryout :
+
+    # GAT GCN model / GCN residual using multiple message passing (like 5-6) with residual next state, but much less parameters (i.e. smaller layers etc.)
+        # such that not too much parameters --> in general just more layers to see if that helps
+    # Try out more with dilation 
+    
+
     
     # Note that we actually have 35 classes !!! not like written in project B1
-    base_model = base_gnn.GAT_GCN_model(graph_tensor_specification = graphs_spec,
-                                                  n_message_passing_layers = 2,
-                                                #  use_residual_next_state = True,
-                                                  initial_nodes_mfccs_layer_dims= 64,
-                                                  dilation = False,
-                                                  n_dilation_layers= 0,
-                                                  l2_reg_factor= 1e-4,
-                                                  )
+    base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
+                                                n_message_passing_layers = 2,
+                                                #  use_residual_next_state = False,
+                                                initial_nodes_mfccs_layer_dims= 64,
+                                            #   dilation = False,
+                                            #   n_dilation_layers= N_DILATION_LAYERS,
+                                                l2_reg_factor= 1e-4,
+                                                )
                                                 #  skip_connection_type= 'sum')
 
 
-   # flop_count = tfm.core.train_utils.try_count_flops(model = base_model, inputs_kwargs = {"input" : graphs_spec}, output_path = 'results.txt')
+# flop_count = tfm.core.train_utils.try_count_flops(model = base_model, inputs_kwargs = {"input" : graphs_spec}, output_path = 'results.txt')
 
-  #  print(flop_count)
-  #  for layer in base_model.layers:
-  #      print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
+#  print(flop_count)
+#  for layer in base_model.layers:
+#      print(f"Layer: {layer.name}, Input shape: {layer.input_shape}, Output shape: {layer.output_shape}")
 
     print(base_model.summary())
 
 
     history = base_gnn.train(model = base_model,
-                             train_ds = train_ds,
-                             val_ds = val_ds,
-                             test_ds = test_ds,
-                             epochs = 50,
-                             batch_size = BATCH_SIZE,
-                             learning_rate = 0.001)
+                            train_ds = train_ds,
+                            val_ds = val_ds,
+                            test_ds = test_ds,
+                            epochs = 1,
+                            batch_size = BATCH_SIZE,
+                            learning_rate = 0.001)
     
 
-    utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'])
+
+
+    
+
+   # utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'])
   
     
     
-    """
+    
     # Run the Optuna study
-    best_params, study = create_optuna_study(
-        gnn_model = base_gnn.base_gnn_weighted_model,
-        graph_tensor_specification= graphs_spec,
-        train_ds=train_ds,
-        val_ds=val_ds,
-        num_classes=35,
-        n_trials=10  # Start with a small number to verify functionality
-    )
+  #  best_params, study = create_optuna_study(
+  #      gnn_model = base_gnn.base_gnn_model_using_gcn,
+  #      graph_tensor_specification= graphs_spec,
+  #      train_ds=train_ds,
+  #      val_ds=val_ds,
+  #      num_classes=35,
+  #      n_trials=20  # Start with a small number to verify functionality
+  #  )
 
     # Visualize results
-    visualize_optuna_results(study)
+  #  visualize_optuna_results(study)
 
     # Build the model with the best parameters
-    best_model = build_model_with_best_params(
-        best_params=best_params,
-        gnn_model = base_gnn.base_gnn_weighted_model,
-        graph_tensor_specification=graphs_spec,
-        num_classes=35
-    )
+  #  best_model = build_model_with_best_params(
+  #      best_params=best_params,
+  #      gnn_model = base_gnn.base_gnn_weighted_model,
+  #      graph_tensor_specification=graphs_spec,
+  #      num_classes=35
+  #  )
 
     # Train the best model
-    history = train_best_model(
-        model=best_model,
-        train_ds=train_ds,
-        val_ds=val_ds,
-        test_ds=test_ds,
-        epochs=50
-    )
+  #  history = train_best_model(
+  #      model=best_model,
+  #      train_ds=train_ds,
+  #      val_ds=val_ds,
+  #      test_ds=test_ds,
+  #      epochs=1
+  #  )
 
+    
     """
-
     # Confusion matrix visualization
 
     y_pred, y_true = utils_metrics.get_ys(test_ds, base_model)
@@ -267,7 +279,7 @@ def main():
     # Precision, Recall, F1-score
     utils_metrics.metrics_evaluation(y_pred, y_true, model_name = "Base GCN")
 
-    
+    """
 
     
 

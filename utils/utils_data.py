@@ -217,7 +217,7 @@ def add_padding_or_trimming(wav, target_length = 16000, padding_mode = 'realisti
 
 # THIS ONE FOR DATASET
 
-def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone = False, noise = False, spec_augmentation = False, noise_type = 'random', noise_prob = 0.8, min_snr_db = -5, max_snr_db = 10):
+def preprocess_audio_OLD(file_path, label, sample_rate, frame_length, frame_step, gammatone = False, noise = False, spec_augmentation = False, noise_type = 'random', noise_prob = 0.8, min_snr_db = -5, max_snr_db = 10):
     """
     Preprocess the audio file by loading, trimming/padding, and normalizing.
     
@@ -310,6 +310,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
         
         chance = np.random.random()
 
+
         # Only apply noise in noise_prob * 100  many cases
         if chance <= noise_prob:
             # Add the scaled noise to the signal
@@ -339,6 +340,149 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
         gncc = get_gnccs(log_gammatone_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
 
         return gncc, wav, label
+
+
+
+
+def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone=False, 
+                     noise=False, spec_augmentation=False, noise_type='random', 
+                     noise_prob=0.8, min_snr_db=-5, max_snr_db=10, return_both=False, freq_param = 5, time_param = 10, spec_prob = 0.8):
+    """
+    Preprocess the audio file by loading, trimming/padding, and normalizing.
+    
+    Args:
+        file_path: Path to the audio file
+        label: Label of the audio file
+        noise: Boolean indicating whether to add noise or not
+        return_both: Whether to return both original and augmented versions
+
+    Returns:
+        If return_both is False:
+            mfcc/gncc, wav, label: Processed features, waveform, and label
+        If return_both is True:
+            (original_mfcc/gncc, original_wav, label), (augmented_mfcc/gncc, augmented_wav, label)
+    """
+    # Load audio file
+    file_contents = tf.io.read_file(file_path)
+    # Decode wav (returns waveform and sample rate)
+    wav, _ = tf.audio.decode_wav(file_contents)
+    
+
+
+    # Since not all audio samples have the same length, we need to
+    # ensure they have the same length (for batching) by padding shorter/
+    # trimming longer audio files
+    # Standardize length to 16000 samples (1 second at 16kHz)
+
+
+    target_length = 16000 # think can be changed to sample_rate
+    
+    # Get current length
+    current_length = tf.shape(wav)[0]
+    
+    # Handle different lengths
+    if current_length > target_length:
+        # Trim to target length
+        wav = wav[:target_length]
+    else:
+        # Pad with zeros to reach target length
+        paddings = [[0, target_length - current_length], [0, 0]]
+        wav = tf.pad(wav, paddings)
+
+
+    # Squeeze the wav (i.e. remove the channel dimension (we have one channel))
+    wav = tf.squeeze(wav, axis = -1)
+
+    if noise == True:
+        # Load the noise files
+        noise_files = list(pathlib.Path('speech_commands_v0.02/_background_noise_').glob('*.wav'))
+        noise_files = [str(noise_file) for noise_file in noise_files]
+        noise_dir = Path('speech_commands_v0.02/_background_noise_' + '/')
+
+        if noise_type == 'random':
+            # Randomly select a noise file
+            noise_file = random.choice(noise_files)
+        else:
+            noise_file = noise_dir / (noise_type + '.wav')
+            noise_file = str(noise_file)
+            
+       
+        noise_wav, _ = read_path_to_wav(noise_file)
+
+        # Get a random segment of noise
+        noise_length = tf.shape(noise_wav)[0]
+
+        start_index = tf.random.uniform(
+            shape=[], 
+            minval=0, 
+            maxval=noise_length - 16000,
+            dtype=tf.int32
+                                        )
+      #  start_index = random.randint(0, int(noise_length) - 16000)
+
+
+        noise_segment = noise_wav[start_index:start_index + 16000]
+        
+        # Ensure the noise segment has the same shape as the wav
+        if len(noise_segment.shape) > 1:
+            noise_segment = tf.squeeze(noise_segment, axis=-1)
+        
+        # Calculate signal power
+        signal_power = tf.reduce_mean(tf.square(wav))
+        noise_power = tf.reduce_mean(tf.square(noise_segment))
+        
+        # Generate random SNR in the specified range
+        target_snr_db = 5 #random.uniform(min_snr_db, max_snr_db)
+        
+        # Calculate the scaling factor for the noise
+        target_snr_linear = 10 ** (target_snr_db / 10)
+        scaling_factor = tf.sqrt(signal_power / (noise_power * target_snr_linear))
+        
+        # Scale the noise to achieve the target SNR
+        scaled_noise = noise_segment * scaling_factor
+        
+        chance = tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
+
+
+        # Only apply noise in noise_prob * 100  many cases
+        if chance <= noise_prob:
+            # Add the scaled noise to the signal
+            wav = wav + scaled_noise
+    
+    # Next, get the spectrogram of the audio file
+    spectrogram, frame_step = get_spectrogram(wav)
+    
+    # Process original version
+    if not gammatone:
+        log_mel_spectrogram, _ = apply_mel_filterbanks(spectrogram, sample_rate)
+        original_mfcc = get_mfccs(log_mel_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
+        features = original_mfcc
+    else:
+        log_gammatone_spectrogram = apply_gammatone_filterbanks(spectrogram, sample_rate)
+        original_gncc = get_gnccs(log_gammatone_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
+        features = original_gncc
+    
+    # If not using spec augmentation or not returning both, return the processed features
+    if not spec_augmentation or not return_both:
+        return features, wav, label
+    
+    # Process augmented version
+
+    augmented_spectrogram = spec_augment_easy(spectrogram, freq_param= freq_param, time_param= time_param, mode='all')
+    
+    if not gammatone:
+        aug_log_mel_spectrogram, _ = apply_mel_filterbanks(augmented_spectrogram, sample_rate)
+        augmented_mfcc = get_mfccs(aug_log_mel_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
+        augmented_features = augmented_mfcc
+    else:
+        aug_log_gammatone_spectrogram = apply_gammatone_filterbanks(augmented_spectrogram, sample_rate)
+        augmented_gncc = get_gnccs(aug_log_gammatone_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
+        augmented_features = augmented_gncc
+    
+    # Return both original and augmented
+    return (features, wav, label), (augmented_features, wav, label)
+
+
     
 
 
@@ -413,40 +557,55 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     return train_files, train_labels, val_files_list, val_labels, test_files_list, test_labels, class_to_index
 
     
-def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode = 'train', noise_prob = 0.8, gammatone= False, noise = False, spec_augmentation = False, noise_type = 'random', min_snr_db = -5, max_snr_db = 10):
+def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode='train', 
+                    noise_prob=0.8, gammatone=False, noise=False, spec_augmentation=False, 
+                    noise_type='random', min_snr_db=-5, max_snr_db=10, freq_param = 6, time_param = 12, spec_prob = 0.8):
     """
     Create a TensorFlow dataset from the audio files and labels.
-    Args:
-        path_files: List of audio file paths
-        labels: List of corresponding labels
-        mode: Mode of the dataset ('train', 'val', or 'test')
-    Returns:
-        dataset: TensorFlow dataset"""
-
+    """
     # Create datasets
     ds = tf.data.Dataset.from_tensor_slices((path_files, labels))
+    
     # Shuffle if train
     if mode == 'train':
         ds = ds.shuffle(buffer_size=len(ds))
- 
-    ds = ds.map(
-    lambda file_path, label: preprocess_audio(
-        file_path, 
-        label, 
-        sample_rate=sample_rate,
-        frame_length=frame_length,
-        frame_step=frame_step,
-        spec_augmentation= spec_augmentation,
-        gammatone=gammatone,
-        noise=noise, 
-        noise_prob = noise_prob,
-        noise_type=noise_type, 
-        min_snr_db=min_snr_db, 
-        max_snr_db=max_snr_db
-    ),
-    num_parallel_calls=tf.data.AUTOTUNE
-                )  
-     
+    
+    if mode == 'train' and spec_augmentation:
+        # For training with augmentation, get both original and augmented
+        ds_with_both = ds.map(
+            lambda file_path, label: preprocess_audio(
+                file_path, label, sample_rate=sample_rate,
+                frame_length=frame_length, frame_step=frame_step,
+                spec_augmentation=True, gammatone=gammatone,
+                noise=noise, noise_prob=noise_prob,
+                noise_type=noise_type, min_snr_db=min_snr_db, 
+                max_snr_db=max_snr_db, return_both=True, freq_param = freq_param, time_param = time_param, spec_prob = spec_prob,
+            ),
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
+        
+        # Unpack the dataset to get separate entries for original and augmented
+        ds_original = ds_with_both.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE)
+        ds_augmented = ds_with_both.map(lambda x, y: y, num_parallel_calls=tf.data.AUTOTUNE)
+        
+        # Combine both datasets
+        ds = ds_original.concatenate(ds_augmented)
+        
+        # Reshuffle after concatenation
+        ds = ds.shuffle(buffer_size=len(path_files)*2)
+    else:
+        # For validation/test or when no augmentation is used
+        ds = ds.map(
+            lambda file_path, label: preprocess_audio(
+                file_path, label, sample_rate=sample_rate,
+                frame_length=frame_length, frame_step=frame_step,
+                spec_augmentation=spec_augmentation, gammatone=gammatone,
+                noise=noise, noise_prob=noise_prob,
+                noise_type=noise_type, min_snr_db=min_snr_db, 
+                max_snr_db=max_snr_db
+            ),
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
     
     return ds
 

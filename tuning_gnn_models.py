@@ -34,15 +34,17 @@ def create_optuna_study(gnn_model, graph_tensor_specification, train_ds, val_ds,
         message_dim = trial.suggest_int('message_dim', 64, 256, step=64)
         initial_nodes_mfccs_layer_dims = trial.suggest_int('initial_nodes_layer_dims', 32, 128, step=32)
         next_state_dim = trial.suggest_int('next_state_dim', 64, 256, step=64)
-        l2_reg_factor = trial.suggest_float('l2_reg_factor', 1e-6, 1e-4, log=True)
+        l2_reg_factor = trial.suggest_float('l2_reg_factor', 1e-4, 1e-1, log=True)
         dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5, step=0.1)
         n_message_passing_layers = trial.suggest_int('n_message_passing_layers', 2, 6, step=1)
         use_layer_normalization = trial.suggest_categorical('use_layer_normalization', [True, False])
-     #   use_residual_next_state = trial.suggest_categorical('use_residual_next_state', [True, False])
+        mode = trial.suggest_categorical('mode', ['layer','batch'])
+        use_residual_next_state = trial.suggest_categorical('use_residual_next_state', [True, False])
         dilation = trial.suggest_categorical('dilation', [True, False])
         n_dilation_layers = 1
         if dilation:
             n_dilation_layers = trial.suggest_int('n_dilation_layers', 2, 4, step=1)
+            message_dim = initial_nodes_mfccs_layer_dims = next_state_dim
         learning_rate = trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True)
         
         
@@ -56,10 +58,11 @@ def create_optuna_study(gnn_model, graph_tensor_specification, train_ds, val_ds,
             l2_reg_factor=l2_reg_factor,
             dropout_rate=dropout_rate,
             use_layer_normalization=use_layer_normalization,
+            mode = mode,
             n_message_passing_layers=n_message_passing_layers,
             dilation=dilation,
             n_dilation_layers=n_dilation_layers,
-            use_residual_next_state=False
+            use_residual_next_state= use_residual_next_state
         )
         
         model.compile(
@@ -86,7 +89,8 @@ def create_optuna_study(gnn_model, graph_tensor_specification, train_ds, val_ds,
         print(f"  dropout_rate: {dropout_rate:.2f}")
         print(f"  n_message_passing_layers: {n_message_passing_layers}")
         print(f"  use_layer_normalization: {use_layer_normalization}")
-        print(f"  use_residual_next_state: False")
+        print(f"  use_residual_next_state: {use_residual_next_state}")
+        print(f" Mode : {mode}")
         print(f"  dilation: {dilation}")
         print(f"  n_dilation_layers: {n_dilation_layers}")
         print(f"  learning_rate: {learning_rate:.6f}")
@@ -100,7 +104,7 @@ def create_optuna_study(gnn_model, graph_tensor_specification, train_ds, val_ds,
         history = model.fit(
             train_ds,
             validation_data=val_ds,
-            epochs=3,
+            epochs=1,
             callbacks=[early_stopping],
             verbose=1
         )

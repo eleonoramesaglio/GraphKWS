@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
-from IPython.display import clear_output
+
 
 
 
@@ -38,7 +38,8 @@ def visualize_confusion_matrix(y_pred, y_true):
     plt.xlabel('Predicted label')
     plt.ylabel('True label')
     plt.title('Confusion Matrix')
-    plt.show()
+    plt.savefig('imgs/confusion_matrix.png')
+ #   plt.show()
 
 
 # Precision, Recall, F1-score
@@ -99,4 +100,5 @@ def plot_history(history, columns=['loss', 'sparse_categorical_accuracy']):
         ax.legend(edgecolor='black', facecolor='linen', fontsize=12, loc='best')
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig("imgs/history_plot.png")
+  #  plt.show()

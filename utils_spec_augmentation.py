@@ -104,6 +104,9 @@ def spec_augment(mel_spectrogram):
 
 def spec_augment_easy(spectrogram, freq_param = 10, time_param = 10, mode = 'all'):
     if mode == 'all':
+        
+        
+
         spectrogram = tfio.audio.freq_mask(spectrogram, param = freq_param)
         spectrogram = tfio.audio.time_mask(spectrogram, param = time_param)
 
