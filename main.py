@@ -225,7 +225,7 @@ def main():
                             train_ds = train_ds,
                             val_ds = val_ds,
                             test_ds = test_ds,
-                            epochs = 1,
+                            epochs = 50,
                             batch_size = BATCH_SIZE,
                             learning_rate = 0.001)
     
