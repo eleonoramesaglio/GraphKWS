@@ -101,8 +101,13 @@ def spec_augment(mel_spectrogram):
 
 
 
-
+import numpy as np 
 def spec_augment_easy(spectrogram, freq_param = 10, time_param = 10, mode = 'all'):
+    
+    
+    
+    # TODO : add random number to be generated for freq and time param (more diversity)
+
     if mode == 'all':
         
         

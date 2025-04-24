@@ -23,6 +23,11 @@ print(f"Tensorflow version: {tf.__version__}")
 def main():
 
 
+    # For reproducibility & testing across different models
+
+    tf.random.set_seed(32)
+
+
 
     SAMPLE_RATE = 16000 # given in the dataset
     FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
@@ -205,13 +210,17 @@ def main():
                                                 n_message_passing_layers = 2,
                                                 #  use_residual_next_state = False,
                                                 initial_nodes_mfccs_layer_dims= 64,
-                                            #   dilation = False,
-                                            #   n_dilation_layers= N_DILATION_LAYERS,
+                                            dilation = False,
+                                            n_dilation_layers= N_DILATION_LAYERS,
                                                 l2_reg_factor= 1e-4,
                                                 )
                                                 #  skip_connection_type= 'sum')
 
 
+# TODO : try the other initialization of MFCCS (so with node init multiple dense layers)
+
+# TODO : Note : attention models with 32 dim per head and 3 heads don't work well !
+# TODO : check if also to test that noise in val/test ?
 # flop_count = tfm.core.train_utils.try_count_flops(model = base_model, inputs_kwargs = {"input" : graphs_spec}, output_path = 'results.txt')
 
 #  print(flop_count)
@@ -234,7 +243,7 @@ def main():
 
     
 
-   # utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'])
+    utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'])
   
     
     
@@ -270,7 +279,7 @@ def main():
   #  )
 
     
-    """
+
     # Confusion matrix visualization
 
     y_pred, y_true = utils_metrics.get_ys(test_ds, base_model)
@@ -279,7 +288,7 @@ def main():
     # Precision, Recall, F1-score
     utils_metrics.metrics_evaluation(y_pred, y_true, model_name = "Base GCN")
 
-    """
+
 
     
 

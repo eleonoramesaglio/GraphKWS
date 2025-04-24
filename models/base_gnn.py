@@ -848,7 +848,7 @@ def GAT_GCN_model_v2(
 
         return  GATv2Conv(
             num_heads = num_heads,
-            per_head_channels = 64, # dimension of vector of output of each head
+            per_head_channels = 128, # dimension of vector of output of each head
             heads_merge_type = 'concat', # how to merge the heads
             receiver_tag = receiver_tag, # also possible nodes/edges ; see documentation of function !
             receiver_feature = tfgnn.HIDDEN_STATE,
@@ -907,7 +907,7 @@ def GAT_GCN_model_v2(
     graph = tfgnn.keras.layers.GraphUpdate(
             context = tfgnn.keras.layers.ContextUpdate(
                 {
-                    "frames" : gat_convolution(num_heads= 3, receiver_tag = tfgnn.CONTEXT)
+                    "frames" : gat_convolution(num_heads= 2, receiver_tag = tfgnn.CONTEXT)
                 },
                 next_state(next_state_dim, use_layer_normalization)
     )
@@ -1003,10 +1003,17 @@ def GAT_GCN_model(
         if node_set_name == "frames":
 
 
-            features = node_set["features"]
+            
+
+
+            return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
+                node_set["features"]  # This would be your mfcc_static features
+            )
 
             # Split the diff. features such that we can do separate layer learning
 
+            '''
+            features = node_set["features"]
 
             # TODO : try to do base mfcc + its energy, delta + energy, delta-delta + energy
             base_mfccs = features[: , 0:12]
@@ -1027,7 +1034,7 @@ def GAT_GCN_model(
 
 
             return dense_inner(initial_nodes_mfccs_layer_dims, use_layer_normalization=True)(combined_features)
-            
+            '''
         else:
             # Handle any other node types
             raise ValueError(f"Unknown node set: {node_set_name}")
@@ -2658,7 +2665,7 @@ def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_ca
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
             monitor='val_sparse_categorical_accuracy',
-            patience=15,
+            patience=7,
             restore_best_weights=True
         ),
         tf.keras.callbacks.ReduceLROnPlateau(

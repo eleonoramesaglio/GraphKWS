@@ -12,6 +12,7 @@ from pathlib import Path
 import sounddevice as sd
 from utils_spec_augmentation import *
 from scipy.signal import gammatone
+import librosa 
 
 
 
@@ -56,6 +57,7 @@ def label_to_idx_conversion(label, class_to_index):
     return idx
 
 
+
 def read_path_to_wav(file_path):
     """
     Read the audio file and return its contents.
@@ -68,11 +70,16 @@ def read_path_to_wav(file_path):
     """
 
     # Load audio file
+
     file_contents = tf.io.read_file(file_path)
 
     wav, sample_rate = tf.audio.decode_wav(file_contents)
     
     return wav, sample_rate
+    
+
+
+
 
 def listen_audio(wav, sample_rate=16000):
     """
@@ -399,9 +406,28 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
         noise_files = [str(noise_file) for noise_file in noise_files]
         noise_dir = Path('speech_commands_v0.02/_background_noise_' + '/')
 
+
+        def tf_random_choice(string_list):
+            # Convert the string list to a tensor
+            string_tensor = tf.constant(string_list)
+            
+            # Create a uniform logits tensor (equal probability for each string)
+            logits = tf.ones([1, len(string_list)])
+            
+            # Sample a categorical distribution to get an index
+            indices = tf.random.categorical(tf.math.log(logits), 1)
+            
+            # Extract the sampled index and use it to select from the string tensor
+            selected_index = indices[0, 0]
+            selected_string = string_tensor[selected_index]
+            
+            return selected_string
+
         if noise_type == 'random':
+
+            noise_file = tf_random_choice(noise_files)
             # Randomly select a noise file
-            noise_file = random.choice(noise_files)
+          #  noise_file = random.choice(noise_files)
         else:
             noise_file = noise_dir / (noise_type + '.wav')
             noise_file = str(noise_file)
@@ -409,16 +435,33 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
        
         noise_wav, _ = read_path_to_wav(noise_file)
 
+
+        
         # Get a random segment of noise
+     #   if "exercise_bike" in noise_file:
+     #       noise_length = 980062
+      ##  if "doing_the_dishes" in noise_file:
+       #     noise_length = 1522930
+       # if "dude_miaowing" in noise_file:
+        #    noise_length = 988891
+       # if "noise" in noise_file:
+       #     noise_length = 960000
+       # if "running_tap" in noise_file:
+       #     noise_length = 978488
+
+
+
         noise_length = tf.shape(noise_wav)[0]
+
 
         start_index = tf.random.uniform(
             shape=[], 
             minval=0, 
-            maxval=noise_length - 16000,
+            maxval= noise_length - 16000,
             dtype=tf.int32
-                                        )
-      #  start_index = random.randint(0, int(noise_length) - 16000)
+       )
+                       
+    #    start_index = random.randint(0, int(noise_length) - 16000)
 
 
         noise_segment = noise_wav[start_index:start_index + 16000]
@@ -432,8 +475,8 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
         noise_power = tf.reduce_mean(tf.square(noise_segment))
         
         # Generate random SNR in the specified range
-        target_snr_db = 5 #random.uniform(min_snr_db, max_snr_db)
-        
+        target_snr_db = tf.random.uniform(shape = [],minval = min_snr_db, maxval = max_snr_db)
+      #  tf.print(target_snr_db)
         # Calculate the scaling factor for the noise
         target_snr_linear = 10 ** (target_snr_db / 10)
         scaling_factor = tf.sqrt(signal_power / (noise_power * target_snr_linear))
@@ -442,8 +485,10 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
         scaled_noise = noise_segment * scaling_factor
         
         chance = tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
-
-
+     #   chance = np.random.random() 
+        #
+    #    print(chance)
+    #    tf.print(chance)
         # Only apply noise in noise_prob * 100  many cases
         if chance <= noise_prob:
             # Add the scaled noise to the signal
