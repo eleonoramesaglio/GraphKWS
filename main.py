@@ -62,7 +62,7 @@ def main():
     # noise = True to match 2015 google paper ; possibly do a comparison with noise = False
     train_ds, val_ds, test_ds = utils_data.create_tf_dataset(train_files, train_labels, sample_rate= SAMPLE_RATE, 
                                                             frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                            mode = 'train', gammatone = True, noise = True, noise_prob = 0.8, spec_augmentation = False, freq_param = 6, time_param = 12, spec_prob = 0.8),\
+                                                            mode = 'train', gammatone = True, noise = True, noise_prob = 0.8, spec_augmentation = True, spec_prob = 0.8),\
                                 utils_data.create_tf_dataset(val_files, val_labels,sample_rate= SAMPLE_RATE, 
                                                             frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
                                                             mode = 'val', gammatone = True, noise = False, spec_augmentation = False),\
@@ -218,6 +218,9 @@ def main():
 
 
 # TODO : try the other initialization of MFCCS (so with node init multiple dense layers)
+
+# TODO : spec augment at 80 percent 
+# TODO : check that new spec augment implementation works : spec augment if set to None, random generation of values for each sample 
 
 # TODO : Note : attention models with 32 dim per head and 3 heads don't work well !
 # TODO : check if also to test that noise in val/test ?

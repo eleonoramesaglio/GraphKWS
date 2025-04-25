@@ -353,7 +353,7 @@ def preprocess_audio_OLD(file_path, label, sample_rate, frame_length, frame_step
 
 def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone=False, 
                      noise=False, spec_augmentation=False, noise_type='random', 
-                     noise_prob=0.8, min_snr_db=-5, max_snr_db=10, return_both=False, freq_param = 5, time_param = 10, spec_prob = 0.8):
+                     noise_prob=0.8, min_snr_db=-5, max_snr_db=10, return_both=False, freq_param = None, time_param = None):
     """
     Preprocess the audio file by loading, trimming/padding, and normalizing.
     
@@ -513,6 +513,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
     
     # Process augmented version
 
+
     augmented_spectrogram = spec_augment_easy(spectrogram, freq_param= freq_param, time_param= time_param, mode='all')
     
     if not gammatone:
@@ -523,9 +524,12 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
         aug_log_gammatone_spectrogram = apply_gammatone_filterbanks(augmented_spectrogram, sample_rate)
         augmented_gncc = get_gnccs(aug_log_gammatone_spectrogram, wav, frame_length=frame_length, frame_step=frame_step, M=2)
         augmented_features = augmented_gncc
-    
+
+
+
     # Return both original and augmented
     return (features, wav, label), (augmented_features, wav, label)
+
 
 
     
@@ -604,7 +608,7 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     
 def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode='train', 
                     noise_prob=0.8, gammatone=False, noise=False, spec_augmentation=False, 
-                    noise_type='random', min_snr_db=-5, max_snr_db=10, freq_param = 6, time_param = 12, spec_prob = 0.8):
+                    noise_type='random', min_snr_db=-5, max_snr_db=10, freq_param = None, time_param = None, spec_prob = 0.8):
     """
     Create a TensorFlow dataset from the audio files and labels.
     """
@@ -624,7 +628,10 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
                 spec_augmentation=True, gammatone=gammatone,
                 noise=noise, noise_prob=noise_prob,
                 noise_type=noise_type, min_snr_db=min_snr_db, 
-                max_snr_db=max_snr_db, return_both=True, freq_param = freq_param, time_param = time_param, spec_prob = spec_prob,
+                max_snr_db=max_snr_db, return_both=True,
+                  freq_param = freq_param, 
+                  time_param = time_param, 
+                  spec_prob = spec_prob,
             ),
             num_parallel_calls=tf.data.AUTOTUNE
         )
@@ -633,8 +640,26 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
         ds_original = ds_with_both.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE)
         ds_augmented = ds_with_both.map(lambda x, y: y, num_parallel_calls=tf.data.AUTOTUNE)
         
-        # Combine both datasets
-        ds = ds_original.concatenate(ds_augmented)
+
+        # Create a random dataset for filtering
+        random_ds = tf.data.Dataset.from_tensor_slices(
+            tf.random.uniform(shape=[len(path_files)], minval=0, maxval=1)
+        )
+        
+        # Add random values to augmented dataset
+        ds_augmented_with_random = tf.data.Dataset.zip((ds_augmented, random_ds))
+        
+        # Filter augmented samples based on spec_prob
+        ds_augmented_filtered = ds_augmented_with_random.filter(
+            lambda augmented, rand_val: rand_val < spec_prob
+        ).map(
+            lambda augmented, _: augmented  # Remove the random value
+        )
+        
+        # Combine original dataset with filtered augmented dataset
+        ds = ds_original.concatenate(ds_augmented_filtered)
+
+
         
         # Reshuffle after concatenation
         ds = ds.shuffle(buffer_size=len(path_files)*2)

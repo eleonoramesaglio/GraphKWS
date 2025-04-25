@@ -102,16 +102,21 @@ def spec_augment(mel_spectrogram):
 
 
 import numpy as np 
-def spec_augment_easy(spectrogram, freq_param = 10, time_param = 10, mode = 'all'):
+def spec_augment_easy(spectrogram, freq_param = None, time_param = None, mode = 'all'):
     
     
     
-    # TODO : add random number to be generated for freq and time param (more diversity)
+  
+
+    if freq_param is None:
+      freq_param = tf.random.uniform(shape = [], minval = 3, maxval = 15, dtype = tf.int32)
+    
+    if time_param is None:
+      time_param = tf.random.uniform(shape = [], minval=10, maxval = 30, dtype = tf.int32)
 
     if mode == 'all':
         
-        
-
+      
         spectrogram = tfio.audio.freq_mask(spectrogram, param = freq_param)
         spectrogram = tfio.audio.time_mask(spectrogram, param = time_param)
 
