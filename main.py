@@ -137,7 +137,7 @@ def main():
 #  utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
 #  utils_data.visualize_filterbank(filters, sample_rate = 16000, num_spectrogram_bins = num_spectrogram_bins)
 
-# utils_data.visualize_mfccs(example_mfcc, label = 1)
+    utils_data.visualize_mfccs(example_mfcc, label = 1)
 
 
 
