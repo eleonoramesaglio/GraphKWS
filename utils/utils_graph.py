@@ -163,6 +163,53 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
 
 
 
+def get_reduced_representation(mfccs, k = 2, pooling_type = 'max'):
+    
+    """
+    Reduces MFCC representation by pooling across k consecutive frames.
+    
+    """
+    n_frames, n_features = mfccs.shape
+    
+    # 1. Complete groups (k elements)
+    # Calculate number of complete groups of k frames
+    n_complete_groups = n_frames // k
+    
+    if n_complete_groups > 0:
+        # Select the portion of mfccs that are part of complete groups
+        complete_groups = mfccs[:n_complete_groups*k]
+        # Reorganize the mfccs in a tensor with dimensions [number of groups, frames per group, features per frame]
+        reshaped = tf.reshape(complete_groups, [n_complete_groups, k, n_features])
+        # Pool over the groups
+        if pooling_type == 'max':
+            complete_reduced = tf.reduce_max(reshaped, axis=1)  # take the max
+        elif pooling_type == 'mean':
+            complete_reduced = tf.reduce_mean(reshaped, axis=1)   # take the mean
+        else:
+            raise ValueError(f"Unsupported pooling_type: {pooling_type}. Use 'max' or 'mean'.")
+    else:
+        complete_reduced = tf.zeros([0, n_features], dtype=mfccs.dtype)
+    
+    # 2. Incomplete group (< k elements)
+    # Handle the incomplete group of frames at the end (if any)
+    remainder_frames = n_frames % k
+    if remainder_frames > 0:
+        incomplete_group = mfccs[n_complete_groups*k:]
+        # Pool over the last group
+        if pooling_type == 'max':
+            incomplete_reduced = tf.reduce_max(incomplete_group, axis=0, keepdims=True)
+        elif pooling_type == 'mean':
+            incomplete_reduced = tf.reduce_mean(incomplete_group, axis=0, keepdims=True)
+        
+        # 3. Combine complete_reduced and incomplete_reduced
+        reduced_mfccs = tf.concat([complete_reduced, incomplete_reduced], axis=0)
+    else:
+        reduced_mfccs = complete_reduced
+    
+    # Return the reduced representation
+    return reduced_mfccs
+
+
 
 def create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate = 2):
 
