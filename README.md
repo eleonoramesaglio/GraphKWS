@@ -5,7 +5,7 @@ This repository contains the project for the Machine Learning for Human Data cou
 ## Authors
 
 - Eleonora Mesaglio
-- Marlon Helbing
+- Marlon Joshua Helbing
 
 
 ## Overview
