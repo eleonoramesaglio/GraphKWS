@@ -163,13 +163,13 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
 
 
 
-def get_reduced_representation(mfccs, k = 2, pooling_type = 'max'):
+def get_reduced_representation(mfccs, wav, label, k = 2, pooling_type = 'max'):
     
     """
     Reduces MFCC representation by pooling across k consecutive frames.
     
     """
-    n_frames, n_features = mfccs.shape
+    n_frames, n_features = 98, 39 # static, known values
     
     # 1. Complete groups (k elements)
     # Calculate number of complete groups of k frames
@@ -207,7 +207,7 @@ def get_reduced_representation(mfccs, k = 2, pooling_type = 'max'):
         reduced_mfccs = complete_reduced
     
     # Return the reduced representation
-    return reduced_mfccs
+    return reduced_mfccs, wav,label
 
 
 

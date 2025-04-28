@@ -157,7 +157,7 @@ def mfccs_to_graph_tensors_multi_nodes_for_dataset(mfcc, adjacency_matrices, lab
     
     return graph_tensor, label
 
-def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label):
+def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label, reduced_node_bool, reduced_node_k):
     """
     Convert MFCC features and adjacency matrices to a graph tensor where
     each adjacency matrix becomes a separate edge set in the graph.
@@ -171,7 +171,10 @@ def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label):
         A tuple (graph_tensor, label) where graph_tensor contains multiple edge sets
     """
     # Ensure current shape of MFCC (98 frames, 39 MFCCs)
-    mfcc_static = tf.reshape(mfcc, [98, 39])
+    if reduced_node_bool:
+        mfcc_static = tf.reshape(mfcc, [98 // reduced_node_k, 39])
+    else:
+        mfcc_static = tf.reshape(mfcc, [98, 39])
     
     # Create the node set that will be shared by all edge sets
     node_sets = {
@@ -2676,7 +2679,7 @@ def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_ca
             verbose=1
         )
     ]
-    
+
 
 
     model.compile(

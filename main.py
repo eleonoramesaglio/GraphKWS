@@ -35,6 +35,11 @@ def main():
         FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
         FRAME_STEP = int(SAMPLE_RATE * 0.010)  # 10 ms 
 
+        N_DILATION_LAYERS = 0
+
+        REDUCED_NODE_REP_BOOL = True
+        REDUCED_NODE_REP_K = 2
+
 
         # Load data
         train_files, train_labels, val_files, val_labels, test_files, test_labels, class_to_index = utils_data.load_audio_dataset(data_dir = 'speech_commands_v0.02',
@@ -72,6 +77,13 @@ def main():
                                                                 frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
                                                                 mode = 'test', gammatone = True, noise = False, spec_augmentation = False)
         
+
+        # Reduce the node representation of our graph by pooling over the 98 frames in groups of size k
+        if REDUCED_NODE_REP_BOOL:
+            train_ds = train_ds.map(lambda mfcc, wav, label : utils_graph.get_reduced_representation(mfcc,wav,label, k = REDUCED_NODE_REP_K, pooling_type = 'max'))
+            val_ds = val_ds.map(lambda mfcc, wav, label : utils_graph.get_reduced_representation(mfcc,wav,label, k = REDUCED_NODE_REP_K, pooling_type = 'max'))
+            test_ds = test_ds.map(lambda mfcc, wav, label : utils_graph.get_reduced_representation(mfcc,wav,label, k = REDUCED_NODE_REP_K, pooling_type = 'max'))
+
 
 
 
@@ -112,7 +124,7 @@ def main():
         # parameters in our create_adjacency_matrix function
 
 
-        N_DILATION_LAYERS = 0
+        
 
         train_ds = train_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
         val_ds = val_ds.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
@@ -164,9 +176,9 @@ def main():
 
         # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
 
-        train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
-        val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
-        test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label))
+        train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label, reduced_node_bool= REDUCED_NODE_REP_BOOL, reduced_node_k= REDUCED_NODE_REP_K))
+        val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label, reduced_node_bool= REDUCED_NODE_REP_BOOL, reduced_node_k= REDUCED_NODE_REP_K))
+        test_ds = test_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label, reduced_node_bool= REDUCED_NODE_REP_BOOL, reduced_node_k= REDUCED_NODE_REP_K))
 
 
 
