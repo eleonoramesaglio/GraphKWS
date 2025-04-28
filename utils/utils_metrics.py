@@ -28,7 +28,7 @@ def get_ys(test_ds, base_model):
 
 # Confusion matrix visualization
 
-def visualize_confusion_matrix(y_pred, y_true):
+def visualize_confusion_matrix(y_pred, y_true, idx):
     cm = confusion_matrix(y_pred, y_true, normalize="true")
     plt.figure(figsize=(16, 14))
     class_names = ["backward", "bed", "bird", "cat", "dog", "down", "eight", "five", "follow", "forward", "four", "go", "happy", "house", 
@@ -38,7 +38,7 @@ def visualize_confusion_matrix(y_pred, y_true):
     plt.xlabel('Predicted label')
     plt.ylabel('True label')
     plt.title('Confusion Matrix')
-    plt.savefig('imgs/confusion_matrix.png')
+    plt.savefig(f'imgs/confusion_matrix_{idx}.png')
  #   plt.show()
 
 
@@ -65,7 +65,7 @@ def metrics_evaluation(y_pred, y_true, model_name):
 
 
 
-def plot_history(history, columns=['loss', 'sparse_categorical_accuracy']):
+def plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx = 0):
     """
     Plot training history after model has been trained.
     
@@ -100,5 +100,5 @@ def plot_history(history, columns=['loss', 'sparse_categorical_accuracy']):
         ax.legend(edgecolor='black', facecolor='linen', fontsize=12, loc='best')
 
     plt.tight_layout()
-    plt.savefig("imgs/history_plot.png")
+    plt.savefig(f"imgs/history_plot_{idx}.png")
   #  plt.show()

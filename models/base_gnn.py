@@ -2665,17 +2665,18 @@ def train(model, train_ds, val_ds, test_ds, epochs = 50, batch_size = 32, use_ca
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
             monitor='val_sparse_categorical_accuracy',
-            patience=7,
+            patience=8,
             restore_best_weights=True
         ),
         tf.keras.callbacks.ReduceLROnPlateau(
             monitor='val_loss',
             factor=0.2,  
-            patience=3,
-            min_lr=1e-6,
+            patience=2,# changed patience to 2
+            min_lr=1e-10, # changed from 1e-6
             verbose=1
         )
     ]
+    
 
 
     model.compile(
