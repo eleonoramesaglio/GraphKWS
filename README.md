@@ -22,9 +22,15 @@ Our objective is to correctly detect a selected subset of words/commands, the ke
 
 ### Graph Neural Network
 
+- GNNs
+- GCNs
+- GATs
+
 [...]
 
 ### Convolutional Neural Network
+
+- Baseline CNN
 
 [...]
 
