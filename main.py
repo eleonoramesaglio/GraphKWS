@@ -26,7 +26,7 @@ def main():
     # For reproducibility & testing across different models
 
 
-    for i in range(6,10):
+    for i in range(17,20):
         tf.random.set_seed(32)
 
 
@@ -219,65 +219,65 @@ def main():
         
 
 
-        if i == 5:        
+        if i == 17:        
             # Note that we actually have 35 classes !!! not like written in project B1
             base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
                                                         n_message_passing_layers = 2,
-                                                          use_residual_next_state = True,
-                                                        initial_nodes_mfccs_layer_dims= 128,
+                                                          use_residual_next_state = False,
+                                                        initial_nodes_mfccs_layer_dims= 64,
                                                         dilation = False,
                                                         n_dilation_layers= N_DILATION_LAYERS,
                                                         l2_reg_factor= 1e-4,
                                                         )
                                                         #  skip_connection_type= 'sum')
         
-        if i == 6:
+        if i == 18:
 
             base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
                                                         n_message_passing_layers = 4,
-                                                          use_residual_next_state = True,
-                                                        initial_nodes_mfccs_layer_dims= 128,
+                                                          use_residual_next_state = False,
+                                                        initial_nodes_mfccs_layer_dims= 64,
                                                         dilation = False,
                                                         n_dilation_layers= N_DILATION_LAYERS,
                                                         l2_reg_factor= 1e-4,
                                                         )
                                                         #  skip_connection_type= 'sum')
 
-        if i == 7:
+        if i == 19:
 
 
-            base_model = base_gnn.base_gnn_weighted_model(graph_tensor_specification = graphs_spec,
+            base_model = base_gnn.GAT_GCN_model(graph_tensor_specification = graphs_spec,
                                                         n_message_passing_layers = 2,
                                                         #  use_residual_next_state = False,
                                                         initial_nodes_mfccs_layer_dims= 64,
-                                                      #  dilation = False,
-                                                      #  n_dilation_layers= N_DILATION_LAYERS,
+                                                        dilation = False,
+                                                        n_dilation_layers= N_DILATION_LAYERS,
                                                         l2_reg_factor= 1e-4,
                                                         )
                                                         #  skip_connection_type= 'sum')
 
         
-        if i == 8:
+        if i == 11:
 
-            base_model = base_gnn.base_gnn_model_using_gcn_with_residual_blocks(graph_tensor_specification = graphs_spec,
+            base_model = base_gnn.GAT_GCN_model_v2(graph_tensor_specification = graphs_spec,
                                                         n_message_passing_layers = 4,
                                                         #  use_residual_next_state = False,
                                                         initial_nodes_mfccs_layer_dims= 64,
-                                                      #  dilation = False,
-                                                      #  n_dilation_layers= N_DILATION_LAYERS,
+                                                        dilation = True,
+                                                        n_dilation_layers= N_DILATION_LAYERS,
                                                         l2_reg_factor= 1e-4,
                                                         )
                                                         #  skip_connection_type= 'sum')
 
 
-        if i == 9:
+        if i == 14:
 
            base_model = base_gnn.base_GATv2_model(graph_tensor_specification = graphs_spec,
-                                                        n_message_passing_layers = 2,
+                                                        n_message_passing_layers = 4,
                                                         #  use_residual_next_state = False,
                                                         initial_nodes_mfccs_layer_dims= 64,
-                                                      #  dilation = False,
-                                                      #  n_dilation_layers= N_DILATION_LAYERS,
+                                                        dilation = True,
+                                                        n_dilation_layers= N_DILATION_LAYERS,
                                                         l2_reg_factor= 1e-4,
                                                         )
                                                         #  skip_connection_type= 'sum')

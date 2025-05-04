@@ -631,7 +631,6 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
                 max_snr_db=max_snr_db, return_both=True,
                   freq_param = freq_param, 
                   time_param = time_param, 
-                  spec_prob = spec_prob,
             ),
             num_parallel_calls=tf.data.AUTOTUNE
         )
