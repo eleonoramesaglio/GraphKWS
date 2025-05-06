@@ -114,7 +114,8 @@ def main():
          #   utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
 
             # Precision, Recall, F1-score
-            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}")
+            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}") # TODO : doesn't work for cnn rn, but scores
+            # last epoch of res8 narrow : val_loss: 0.4314 - val_sparse_categorical_accuracy: 0.8911 - lr: 1.0000e-03
     
         
 
