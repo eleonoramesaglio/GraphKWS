@@ -9,7 +9,7 @@ import tensorflow as tf
 from tuning_gnn_models import * 
 import random 
 import numpy as np
-import tensorflow_models as tfm 
+
 
 
 # Get the tensorflow version
