@@ -22,8 +22,32 @@ print(f"Tensorflow version: {tf.__version__}")
 
 def main():
 
+# try model 29/30 on new gpu 
 
-    # For reproducibility & testing across different models
+# Model 28 
+    #      Accuracy  Precision    Recall  F1-score
+#Model 28  0.924307   0.925653  0.924307  0.924365
+
+#          Accuracy  Precision    Recall  F1-score
+#Model 29  0.921854   0.923591  0.921854   0.92197
+
+# NO Spec augment, but dilation layers 3 , reduced nodes at k = 2 (model 26 & 27)
+
+# Model 27         Accuracy  Precision    Recall  F1-score
+#Model 27  0.915584   0.916376  0.915584  0.915713
+
+# Model 26 
+
+#          Accuracy  Precision    Recall  F1-score
+#Model 26  0.903226   0.904475  0.903226  0.903435
+
+# Model 25 # WITH spec augment
+#           Accuracy  Precision    Recall  F1-score
+#Model 25  0.920945   0.921322  0.920945  0.920581
+
+
+
+    
     #           Accuracy  Precision    Recall  F1-score
 #Model 21  0.904407   0.905583  0.904407   0.90422
 
@@ -34,9 +58,9 @@ def main():
 
 
 
+
+
 # same settings also for model 22 & 23, need to calc accuracy from confusion matrices 
-
-
 
 # GAT GCN model, 2 message passing, spec augmentation, no dilation, reduced nodes at k = 2
     #      Accuracy  Precision  Recall  F1-score
@@ -44,10 +68,11 @@ def main():
 
 
 
-    for i in range(22,25):
+    for i in range(29,30):
+        # For reproducibility & testing across different models
         tf.random.set_seed(32)
 
-        MODE_MODEL = 'CNN'
+        MODE_MODEL = 'GNN'
 
 
 
@@ -263,10 +288,10 @@ def main():
             
 
 
-            if i == 22:        
+            if i == 28:        
                 # Note that we actually have 35 classes !!! not like written in project B1
                 base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
-                                                            n_message_passing_layers = 2,
+                                                            n_message_passing_layers = 6,
                                                             use_residual_next_state = False,
                                                             initial_nodes_mfccs_layer_dims= 64,
                                                             dilation = False,
@@ -275,10 +300,10 @@ def main():
                                                             )
                                                             #  skip_connection_type= 'sum')
             
-            if i == 23:
+            if i == 29:
 
                 base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
-                                                            n_message_passing_layers = 4,
+                                                            n_message_passing_layers = 8,
                                                             use_residual_next_state = False,
                                                             initial_nodes_mfccs_layer_dims= 64,
                                                             dilation = False,
@@ -287,7 +312,19 @@ def main():
                                                             )
                                                             #  skip_connection_type= 'sum')
 
-            if i == 24:
+            if i == 30:
+
+                base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
+                                                            n_message_passing_layers = 10,
+                                                            use_residual_next_state = False,
+                                                            initial_nodes_mfccs_layer_dims= 64,
+                                                            dilation = False,
+                                                            n_dilation_layers= N_DILATION_LAYERS,
+                                                            l2_reg_factor= 1e-4,
+                                                            )
+                                                            #  skip_connection_type= 'sum')
+
+            if i == 6:
 
 
                 base_model = base_gnn.GAT_GCN_model(graph_tensor_specification = graphs_spec,
@@ -301,13 +338,13 @@ def main():
                                                             #  skip_connection_type= 'sum')
 
             
-            if i == 25:
+            if i == 26:
 
                 base_model = base_gnn.GAT_GCN_model_v2(graph_tensor_specification = graphs_spec,
-                                                            n_message_passing_layers = 4,
+                                                            n_message_passing_layers = 3,
                                                             #  use_residual_next_state = False,
                                                             initial_nodes_mfccs_layer_dims= 64,
-                                                            dilation = False,
+                                                            dilation = True,
                                                             n_dilation_layers= N_DILATION_LAYERS,
                                                             l2_reg_factor= 1e-4,
                                                             )
