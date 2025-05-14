@@ -266,7 +266,7 @@ def main():
             )
             
             test_ds = test_ds.map(
-                lambda mfcc, adjacency_matrices, label: base_gnn.base_gnn_hierarchical_modelmfccs_to_graph_tensors_for_dataset(
+                lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(
                     mfcc, adjacency_matrices, label, 
                     reduced_node_bool=REDUCED_NODE_REP_BOOL, 
                     reduced_node_k=REDUCED_NODE_REP_K

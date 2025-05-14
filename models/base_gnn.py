@@ -171,8 +171,13 @@ def mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label, reduced_
         A tuple (graph_tensor, label) where graph_tensor contains multiple edge sets
     """
     # Ensure current shape of MFCC (98 frames, 39 MFCCs)
+  
     if reduced_node_bool:
-        mfcc_static = tf.reshape(mfcc, [98 // reduced_node_k, 39])
+        if ((98 // reduced_node_k) == (98/ reduced_node_k)):
+          mfcc_static = tf.reshape(mfcc, [98 // reduced_node_k, 39])
+        else:
+          # this case when we have some overhang of a group 
+          mfcc_static = tf.reshape(mfcc, [((98 // reduced_node_k) + 1), 39])
     else:
         mfcc_static = tf.reshape(mfcc, [98, 39])
     

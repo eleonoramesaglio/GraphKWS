@@ -60,7 +60,7 @@ def main():
     # TODO : remove 
     data_dir = utils_data.download_and_prepare_dataset()
 
-    for i in range(29,30):
+    for i in range(28,29):
         # For reproducibility & testing across different models
         tf.random.set_seed(32)
 
@@ -75,8 +75,8 @@ def main():
 
         N_DILATION_LAYERS = 0
 
-        REDUCED_NODE_REP_BOOL = False
-        REDUCED_NODE_REP_K = 2
+        REDUCED_NODE_REP_BOOL = True
+        REDUCED_NODE_REP_K = 4
 
         # TODO : replace with old (look at github)
         # Load data
@@ -405,6 +405,9 @@ def main():
 
             print(base_model.summary())
 
+            import time 
+
+            start_time = time.time()
 
             history = base_gnn.train(model = base_model,
                                     train_ds = train_ds,
@@ -413,6 +416,12 @@ def main():
                                     epochs = 30,
                                     batch_size = BATCH_SIZE,
                                     learning_rate = 0.001)
+
+
+            end_time = time.time()
+            training_time = end_time - start_time
+
+            print(f"Training completed in {training_time/60:.2f} minutes")
             
 
 
