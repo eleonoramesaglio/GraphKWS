@@ -12,7 +12,7 @@ import tensorflow_io as tfio
 
 def frequency_masking(mel_spectrogram, v, frequency_masking_para=27, frequency_mask_num=2):
     """Spec augmentation Calculation Function.
-
+a
     'SpecAugment' have 3 steps for audio data augmentation.
     first step is time warping using Tensorflow's image_sparse_warp function.
     Second step is frequency masking, last step is time masking.

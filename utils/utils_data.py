@@ -13,6 +13,8 @@ import sounddevice as sd
 from utils_spec_augmentation import *
 from scipy.signal import gammatone
 import librosa 
+import urllib.request
+import tarfile
 
 
 
@@ -536,6 +538,47 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
 
 
 ### MAIN FUNCTIONS 
+
+
+def download_and_prepare_dataset(data_dir="speech_commands_v0.02", force_download=False):
+    """
+    Downloads and extracts the Speech Commands dataset if it doesn't exist.
+    
+    Args:
+        data_dir: Directory where the dataset will be stored
+        force_download: If True, download even if files already exist
+        
+    Returns:
+        The path to the extracted dataset
+    """
+    # Create the directory if it doesn't exist
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # URL for the dataset
+    dataset_url = "http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz"
+    
+    # Path to the downloaded tar.gz file
+    tar_path = os.path.join(data_dir, "speech_commands_v0.02.tar.gz")
+    
+    # Download the dataset if it doesn't exist or force_download is True
+    if not os.path.exists(tar_path) or force_download:
+        print(f"Downloading Speech Commands dataset to {tar_path}...")
+        urllib.request.urlretrieve(dataset_url, tar_path)
+        print("Download complete.")
+    else:
+        print(f"Dataset archive already exists at {tar_path}")
+    
+    # Extract the dataset if needed
+    if force_download or not all(os.path.exists(os.path.join(data_dir, f)) 
+                               for f in ["validation_list.txt", "testing_list.txt"]):
+        print(f"Extracting dataset to {data_dir}...")
+        with tarfile.open(tar_path, "r:gz") as tar:
+            tar.extractall(path=data_dir)
+        print("Extraction complete.")
+    else:
+        print(f"Dataset files already exist in {data_dir}")
+    
+    return data_dir
 
 def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     """

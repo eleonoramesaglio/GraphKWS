@@ -47,15 +47,6 @@ def main():
 
 
 
-    
-    #           Accuracy  Precision    Recall  F1-score
-#Model 21  0.904407   0.905583  0.904407   0.90422
-
-
-
-#          Accuracy  Precision    Recall  F1-score
-#Model 20  0.902862   0.904758  0.902862  0.902676
-
 
 
 
@@ -66,7 +57,8 @@ def main():
     #      Accuracy  Precision  Recall  F1-score
 #Model 24    0.9194   0.919809  0.9194  0.919147
 
-
+    # TODO : remove 
+    data_dir = utils_data.download_and_prepare_dataset()
 
     for i in range(29,30):
         # For reproducibility & testing across different models
@@ -86,11 +78,13 @@ def main():
         REDUCED_NODE_REP_BOOL = False
         REDUCED_NODE_REP_K = 2
 
-
+        # TODO : replace with old (look at github)
         # Load data
-        train_files, train_labels, val_files, val_labels, test_files, test_labels, class_to_index = utils_data.load_audio_dataset(data_dir = 'speech_commands_v0.02',
-                                                                                                                        validation_file = 'speech_commands_v0.02/validation_list.txt',
-                                                                                                                        test_file = 'speech_commands_v0.02/testing_list.txt')
+        train_files, train_labels, val_files, val_labels, test_files, test_labels, class_to_index = utils_data.load_audio_dataset(
+            data_dir=data_dir,
+            validation_file=os.path.join(data_dir, "validation_list.txt"),
+            test_file=os.path.join(data_dir, "testing_list.txt")
+        )
         
 
         # Check the data split (predefined in the text files)
@@ -313,6 +307,8 @@ def main():
                                                             #  skip_connection_type= 'sum')
 
             if i == 30:
+
+            
 
                 base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
                                                             n_message_passing_layers = 10,
