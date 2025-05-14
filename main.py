@@ -64,7 +64,7 @@ def main():
         # For reproducibility & testing across different models
         tf.random.set_seed(32)
 
-        MODE_MODEL = 'GNN'
+        MODE_MODEL = 'CNN'
 
 
 
@@ -121,15 +121,16 @@ def main():
         
 
         if MODE_MODEL == 'CNN':
-            history = base_cnn.train_model(train_ds_og, val_ds_og, test_ds_og, input_shape=(98, 39, 1), num_classes=35, epochs=30, model_type='res8_narrow')
+            model, history = base_cnn.train_model(train_ds_og, val_ds_og, test_ds_og, input_shape=(98, 39, 1), num_classes=35, epochs=1, model_type='res8_narrow')
 
            # utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx = i)
 
 
+            # Removing wav file 
+            test_ds_og = base_cnn.preprocess_data(test_ds_og
+                                    , is_training=False)
 
-            # Confusion matrix visualization
-
-          #  y_pred, y_true = utils_metrics.get_ys(test_ds, base_model)
+            y_pred, y_true = utils_metrics.get_ys(test_ds_og, model)
          #   utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
 
             # Precision, Recall, F1-score

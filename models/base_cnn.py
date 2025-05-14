@@ -288,10 +288,10 @@ def train_model(train_ds, val_ds, test_ds, input_shape, num_classes=12, epochs=2
         callbacks=[lr_schedule]
     )
 
-    test_measurements = model.evaluate(test_ds)
+  #  test_measurements = model.evaluate(test_ds)
 
 
-    print(f"Test Loss : {test_measurements[0]:.2f},\
-          Test Sparse Categorical Accuracy : {test_measurements[1]:.2f}")
+  #  print(f"Test Loss : {test_measurements[0]:.2f},\
+  #        Test Sparse Categorical Accuracy : {test_measurements[1]:.2f}")
     
-    return history
+    return model, history
