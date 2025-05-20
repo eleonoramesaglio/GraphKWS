@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import math
 import tensorflow as tf
 import numpy as np
 import pandas as pd
@@ -102,3 +103,82 @@ def plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx =
     plt.tight_layout()
     plt.savefig(f"imgs/history_plot_{idx}.png")
   #  plt.show()
+
+
+# TODO: add a function to compute the number of edges in the graph first
+
+def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_state_dim, message_layers, reduced = False, k_reduced = 0):
+    """
+    Calculate the number of multiplications for a given model.
+
+    """
+    num_multiplications = 0
+    num_classes = 35
+    mfccs = 39
+    if reduced:
+        nodes = math.ceil(98/k_reduced)
+    else:
+        nodes = 98
+
+    if mode == 'base_gnn':
+        # Initial state encoding
+        num_multiplications = nodes * mfccs * feature_dim
+        # Message passing
+        for i in range(message_layers):
+            if i == 0:
+                node_dim = feature_dim
+            else:
+                node_dim = next_state_dim
+            # GNN SimpleConv
+            gnn_conv_multiplications = num_edges * node_dim * message_dim
+            # Next state computation
+            next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
+            num_multiplications += gnn_conv_multiplications + next_state_multiplications
+        # Logits
+        logits_multiplications = next_state_dim * num_classes
+        num_multiplications += pooling_multiplications + logits_multiplications
+
+    elif mode == 'base_gnn_weighted':
+        # Initial state encoding
+        num_multiplications = nodes * mfccs * feature_dim
+        # Message passing
+        for i in range(message_layers):
+            if i == 0:
+                node_dim = feature_dim
+            else:
+                node_dim = next_state_dim
+            # GNN WeightedConv using the formula: |E| × message_dim (for edge weigths) + |V| × message_dim × message_dim (for the dense layer)
+            gnn_conv_multiplications = num_edges * message_dim + nodes * node_dim * message_dim
+            # Next state computation
+            next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
+            num_multiplications += gnn_conv_multiplications + next_state_multiplications
+        # Logits
+        logits_multiplications = next_state_dim * num_classes
+        num_multiplications += pooling_multiplications + logits_multiplications
+        
+    elif mode == 'base_gcn':
+        # Initial state encoding
+        num_multiplications = nodes * mfccs * feature_dim
+        # Message passing
+        for i in range(message_layers):
+            if i == 0:
+                node_dim = feature_dim
+            else:
+                node_dim = next_state_dim
+            # GCN convolution using the formula: |E| × input_feature_dim + |V| + |V| × input_feature_dim × message_dim
+            gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
+            # Next state computation
+            next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
+            num_multiplications += gcn_conv_multiplications + next_state_multiplications
+        # Mean pooling
+        pooling_multiplications = message_dim
+        # Logits
+        logits_multiplications = next_state_dim * num_classes
+        num_multiplications += pooling_multiplications + logits_multiplications
+
+    elif mode == 'base_gcn_weighted':
+        # TODO: continue tomorrow
+        num_multiplications = 0
+
+    
+    return num_multiplications
