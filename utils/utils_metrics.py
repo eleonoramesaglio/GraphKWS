@@ -160,7 +160,7 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += logits_multiplications
         
-    elif mode == 'gcn':
+    elif mode == 'base_gcn':
         # 1. Initial state encoding
         num_multiplications = nodes * mfccs * feature_dim
         # 2. Message passing
@@ -182,9 +182,9 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
 
     elif mode == 'gat_v2':
         # 1. Initial state encoding:
-        # Conv1D using the formula mfccs * filters * kernel_size multiplications per each node (filters = 16, kernel_size = 3)
+        # 1a. Conv1D: we apply a 1D convolution to the input features (mfccs) to get the initial node features (16 filters of size 3)
         conv1D_multiplications = nodes * mfccs * 16 * 3
-        # Flatten and Dense: (mfccs * 16) * feature_dim multiplications per each node
+        # 1b. Dense: from the conv1D output to the feature_dim embedding
         dense_multiplications = nodes * (mfccs * 16) * feature_dim
         num_multiplications = conv1D_multiplications + dense_multiplications
         # 2. Message passing
@@ -212,16 +212,16 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             next_state_node_multiplications = (node_dim + message_dim) * next_state_dim * nodes
             # 3b. Next state computation for context node
             context_input_dim = num_heads * per_head_channels
+            next_state_context_multiplications = (node_dim + context_input_dim) * next_state_dim
+            # If we use layer normalization
             if use_layer_normalization:
-                next_state_context_multiplications = (node_dim + context_input_dim) * next_state_dim + 3 * next_state_dim
-            else:
-                next_state_context_multiplications = (node_dim + context_input_dim) * next_state_dim
+                next_state_context_multiplications += 3 * next_state_dim
             num_multiplications += gnn_conv_multiplications + gat_conv_multiplications + next_state_node_multiplications + next_state_context_multiplications
         # 4. Logits
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += logits_multiplications
 
-    elif mode == 'gcn_gat':
+    elif mode == 'gat_gcn_v2':
         # continue tomorrow
         num_multiplications = 0
 
