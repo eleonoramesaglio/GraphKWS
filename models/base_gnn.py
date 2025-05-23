@@ -1600,7 +1600,7 @@ def base_gnn_model_using_gcn(
 
 
 
-
+'''
 def base_gnn_model_using_gcn_and_context_node(
         graph_tensor_specification,
         initial_nodes_mfccs_layer_dims = 64,
@@ -1791,7 +1791,7 @@ def base_gnn_model_using_gcn_and_context_node(
 
 
     return model 
-
+'''
 
 
 
