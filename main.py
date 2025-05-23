@@ -57,14 +57,14 @@ def main():
     #      Accuracy  Precision  Recall  F1-score
 #Model 24    0.9194   0.919809  0.9194  0.919147
 
-    # TODO : remove 
+
     data_dir = utils_data.download_and_prepare_dataset()
 
-    for i in range(28,29):
+    for i in range(1):
         # For reproducibility & testing across different models
         tf.random.set_seed(32)
 
-        MODE_MODEL = 'CNN'
+        MODE_MODEL = 'GNN'
 
 
 
@@ -73,10 +73,10 @@ def main():
         FRAME_LENGTH = int(SAMPLE_RATE * 0.025)  # 25 ms 
         FRAME_STEP = int(SAMPLE_RATE * 0.010)  # 10 ms 
 
-        N_DILATION_LAYERS = 0
+        N_DILATION_LAYERS = 5
 
-        REDUCED_NODE_REP_BOOL = True
-        REDUCED_NODE_REP_K = 4
+        REDUCED_NODE_REP_BOOL = False
+        REDUCED_NODE_REP_K = 0
 
         # TODO : replace with old (look at github)
         # Load data
@@ -121,7 +121,7 @@ def main():
         
 
         if MODE_MODEL == 'CNN':
-            model, history = base_cnn.train_model(train_ds_og, val_ds_og, test_ds_og, input_shape=(98, 39, 1), num_classes=35, epochs=1, model_type='res8_narrow')
+            model, history = base_cnn.train_model(train_ds_og, val_ds_og, test_ds_og, input_shape=(98, 39, 1), num_classes=35, epochs=30, model_type='res8_narrow')
 
            # utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx = i)
 
@@ -168,7 +168,7 @@ def main():
 
 
 
-            _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', threshold= 0, cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
+       #     _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', threshold= 0, cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
 
 
         # utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
@@ -190,26 +190,26 @@ def main():
 
             
 
-            train_ds = train_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
-            val_ds = val_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
-            test_ds = test_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
+            train_ds = train_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
+            val_ds = val_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
+            test_ds = test_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
             # Check the shape of the dataset
-            for mfcc, adjacency_matrices, label in train_ds.take(1):
-                print(f"MFCC shape: {mfcc.shape}")
+         #   for mfcc, adjacency_matrices, label in train_ds.take(1):
+         #       print(f"MFCC shape: {mfcc.shape}")
 
 
-                print(f"Label shape: {label.shape}")
-                example_mfcc = mfcc
-                example_adjacency_matrix = adjacency_matrices[0]
+          #      print(f"Label shape: {label.shape}")
+          #      example_mfcc = mfcc
+          #      example_adjacency_matrix = adjacency_matrices[0]
 
             
             # Adjacency test
             # utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
 
-            spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 
-            gam_filters = utils_data.create_gammatone_filterbank(fft_size=FRAME_LENGTH)
+       #     spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 
+       #     gam_filters = utils_data.create_gammatone_filterbank(fft_size=FRAME_LENGTH)
         #  utils_data.visualize_filterbank(gam_filters, spectrogram = spectrogram, gammatone = True)
-            _ , mel_filters = utils_data.apply_mel_filterbanks(spectrogram)
+      #      _ , mel_filters = utils_data.apply_mel_filterbanks(spectrogram)
         #  utils_data.visualize_filterbank(mel_filters, spectrogram = spectrogram)
 
         #  utils_data.visualize_mfccs(example_mfcc, gammatone = True, label = 1)
@@ -220,12 +220,12 @@ def main():
 
 
             # Graph test
-            graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
+         #   graph_example = base_gnn.mfccs_to_graph_tensors(example_mfcc, example_adjacency_matrix)
             # print(f"Graph example shape: {graph_example.shape}")
-            print(f"Graph example: {graph_example}")
-            print("Edges:", graph_example.edge_sets["connections"].adjacency)
-            networkx_graph = utils_graph.convert_tensor_to_networkx(graph_example)
-            pos = utils_graph.node_layout(networkx_graph)
+         #   print(f"Graph example: {graph_example}")
+         #   print("Edges:", graph_example.edge_sets["connections"].adjacency)
+         #   networkx_graph = utils_graph.convert_tensor_to_networkx(graph_example)
+         #   pos = utils_graph.node_layout(networkx_graph)
             # utils_graph.visualize_graph_with_heatmap(networkx_graph, pos = pos, title="Graph Example")
 
 
@@ -283,13 +283,15 @@ def main():
             
 
 
-            if i == 28:        
+            if i == 0:        
                 # Note that we actually have 35 classes !!! not like written in project B1
-                base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
-                                                            n_message_passing_layers = 6,
-                                                            use_residual_next_state = False,
-                                                            initial_nodes_mfccs_layer_dims= 64,
-                                                            dilation = False,
+                base_model = base_gnn.base_gnn_model_using_gcn_and_context_node(graph_tensor_specification = graphs_spec,
+                                                            n_message_passing_layers = 5,
+                                                            use_residual_next_state = True,
+                                                            initial_nodes_mfccs_layer_dims= 32,
+                                                            message_dim= 32,
+                                                            next_state_dim= 32,
+                                                            dilation = True,
                                                             n_dilation_layers= N_DILATION_LAYERS,
                                                             l2_reg_factor= 1e-4,
                                                             )
