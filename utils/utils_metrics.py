@@ -106,7 +106,7 @@ def plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx =
 
 
 # TODO: add a function to compute the number of edges in the graph first
-# TODO: add residual next state computation
+# TODO: add residual next state computation (it should then simply be node_dim * next_state_dim * nodes)
 
 
 
@@ -126,8 +126,8 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
         nodes = 98
 
     if mode == 'gnn':
-        # 1. Initial state encoding ; for each node, we encode the features using a dense layer
-        #                             that maps from #mfccs to feature_dim
+        # 1. Initial state encoding:
+        # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
         num_multiplications = nodes * mfccs * feature_dim
         # 2. Message passing
         for i in range(message_layers):
@@ -145,15 +145,11 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             # The dense layer then maps from the node_dim to the message dim, for each node
             gnn_conv_multiplications = nodes * node_dim * message_dim
             # 2b. Next state computation
-            # - Without layer normalization
-            
-            # TODO : right now, this is only for next state from concat ;
-            #        we need to add a mode for residual next state
-            # it should then simply be node_dim * next_state_dim * nodes
+            # - Without layer normalization            
             if not use_layer_normalization:
                 next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-            # - With layer normalization (+ 3 * next_state_dim for each node)
-            # Since we calculate the variance, normalize (division by std) and scale
+            # - With layer normalization:
+            # For each node + next_state_dim for the variance calculation, + next_state_dim for the normalization and + next_state_dim for scaling
             else:
                 next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
             num_multiplications += gnn_conv_multiplications + next_state_multiplications
@@ -194,14 +190,9 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             else:
                 node_dim = next_state_dim
             # 2a. GCN convolution using the formula: |E| × node_dim + |V| + |V| × node_dim × message_dim
-
-            # So what happens exactly ?
-            # For each edge, we send message in one direction using the weights on the edge,
-            # so we have num_edges * node_dim
-            # TODO :We have a dense layer at the end (? need to check in the paper if that is true),
-            # therefore we have nodes * node_dim * message_dim
-            # TODO : why adding the additional nodes ?
-            # TODO : is the normalization step that is done in GCNs in here ?
+            # - Message passing step: |E| × node_dim 
+            # - Normalization step: |V| (multiplying each node for 1/degree(node))
+            # - Dense transformation step: |V| × node_dim × message_dim
             gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
             # 2b. Next state computation
             # - Without layer normalization
@@ -239,8 +230,8 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             # the context node
 
             # Query: Generated from the single target token () - "What information do I need?"
-            #Key: Generated from all source tokens () - "What information can we provide?"
-            #Value: Generated from all source tokens () - "Here's our actual information"
+            # Key: Generated from all source tokens () - "What information can we provide?"
+            # Value: Generated from all source tokens () - "Here's our actual information"
 
             # -	Query transformation for context node: 1 × node_dim × per_head_channels × num_heads
             # - Key transformation for frame nodes: |V| × node_dim × per_head_channels × num_heads
@@ -282,10 +273,40 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += logits_multiplications
 
-    elif mode == 'gat_gcn_v2':
+    elif mode == 'gat_gcn':
+        # 1. Initial state encoding
+        num_multiplications = nodes * mfccs * feature_dim
+        # 2. Message passing
+        for i in range(message_layers):
+            if i == 0:
+                node_dim = feature_dim
+            else:
+                node_dim = next_state_dim
+            # 2a. GCN convolution using the formula: |E| × node_dim + |V| + |V| × node_dim × message_dim
+            gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
+            # 2b. GAT v2 convolution to context node:
+            # Linear transformations
+            linear_multiplications = (2 * nodes + 1) * node_dim * per_head_channels * num_heads
+            # Attention computation and application
+            attention_multiplications = 2 * nodes * per_head_channels * num_heads
+            gat_conv_multiplications = linear_multiplications + attention_multiplications
+            # 2c. Next state computation
+            # - Without layer normalization
+            if not use_layer_normalization:
+                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
+                next_state_context_multiplications = (node_dim + num_heads * per_head_channels) * next_state_dim
+            # - With layer normalization (+ 3 * next_state_dim for each node)
+            else:
+                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
+                next_state_context_multiplications = (node_dim + num_heads * per_head_channels) * next_state_dim + 3 * next_state_dim
+            num_multiplications += gcn_conv_multiplications + gat_conv_multiplications + next_state_node_multiplications + next_state_context_multiplications
+        # 3. Logits
+        logits_multiplications = next_state_dim * num_classes
+        num_multiplications += logits_multiplications
 
-        # TODO : this has to be changed : This is the code for the gat_gcn ; gat_gcn_v2 only updates the context node AFTER the message passing layers (so always just once)
-        # TODO : I did that such that it has less parameters&multiplications compared to the gat_gcn model
+    elif mode == 'gat_gcn_v2':
+        # gat_gcn_v2 only updates the context node AFTER all the message passing layers (so always just once)
+        # -> less parameters & multiplications compared to the gat_gcn model
         # 1. Initial state encoding
         num_multiplications = nodes * mfccs * feature_dim
         # 2. Message passing
@@ -319,10 +340,6 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
         # 5. Logits
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += logits_multiplications
-
-    elif mode == 'gat_gcn':
-        # TODO: continue tomorrow
-        num_multiplications = 0
     
     elif mode == 'gcn_residual':
         # TODO: continue tomorrow
