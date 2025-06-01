@@ -65,6 +65,7 @@ def metrics_evaluation(y_pred, y_true, model_name):
     print(metrics_df)
 
 
+# Plot training history
 
 def plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx = 0):
     """
@@ -105,7 +106,7 @@ def plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx =
   #  plt.show()
 
 
-# TODO: add a function to compute the number of edges in the graph first
+# Count edges in adjacency matrix
 
 def count_edges(adjacency_matrix):
     """
@@ -116,6 +117,8 @@ def count_edges(adjacency_matrix):
 
     return num_edges
 
+
+# Number of multiplications of a model
 
 def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_state_dim, message_layers,
                               reduced = False, k_reduced = 0,
