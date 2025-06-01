@@ -190,9 +190,9 @@ def main():
 
             
 
-            train_ds = train_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
-            val_ds = val_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
-            test_ds = test_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
+            train_ds = train_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
+            val_ds = val_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
+            test_ds = test_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
             # Check the shape of the dataset
             for mfcc, adjacency_matrices, label in train_ds.take(1):
                 print(f"MFCC shape: {mfcc.shape}")
@@ -209,9 +209,9 @@ def main():
             # Multiplication calculcation
             num_edges = utils_metrics.count_edges(example_adjacency_matrix)
             print(num_edges)
-            mults = utils_metrics.calculate_multiplications('gcn', feature_dim = 128, num_edges = 2125, message_dim = 128, next_state_dim = 128,
-                                                            message_layers = 2, use_layer_normalization=True, residual_next_state=True,
-                                                            reduced = False, k_reduced = 0)
+            mults = utils_metrics.calculate_multiplications('base_gcn', feature_dim = 64, num_edges = 2125, message_dim = 128, next_state_dim = 128,
+                                                            message_layers = 4, reduced = False, k_reduced = 0,
+                                                            num_heads = 2, per_head_channels=128, use_layer_normalization=True)
             print(mults)
 
        #     spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 

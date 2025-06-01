@@ -119,8 +119,7 @@ def count_edges(adjacency_matrix):
 
 def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_state_dim, message_layers,
                               reduced = False, k_reduced = 0,
-                              num_heads = 2, per_head_channels = 128, use_layer_normalization = True,
-                              residual_next_state = False):
+                              num_heads = 2, per_head_channels = 128, use_layer_normalization = True):
     """
     Calculate the number of multiplications for a given model per sample
 
@@ -155,24 +154,12 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             gnn_conv_multiplications = nodes * node_dim * message_dim
 
             # 2b. Next state computation
-
-            # NextStateFromConcat
-            if not residual_next_state:
-                # - Without layer normalization            
-                if not use_layer_normalization:
-                    next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-                # - With layer normalization (+ 3 * next_state_dim for each node)
-                else:
-                    next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-            # ResidualNextState
-            # (we don't concatenate the message dim to the node features, but add them to the next state)
+            # - Without layer normalization            
+            if not use_layer_normalization:
+                next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
+            # - With layer normalization (+ 3 * next_state_dim for each node)
             else:
-                # - Without layer normalization            
-                if not use_layer_normalization:
-                    next_state_multiplications = next_state_dim * next_state_dim * nodes
-                # - With layer normalization:
-                else:
-                    next_state_multiplications = nodes * (next_state_dim * next_state_dim + 3 * next_state_dim)
+                next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
 
             num_multiplications += gnn_conv_multiplications + next_state_multiplications
 
@@ -197,26 +184,14 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             gnn_conv_multiplications = num_edges * node_dim + nodes * node_dim * message_dim
 
             # 2b. Next state computation
-
-            # NextStateFromConcat
-            if not residual_next_state:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-                # - With layer normalization
-                else:
-                    next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-                num_multiplications += gnn_conv_multiplications + next_state_multiplications
-            # ResidualNextState
+            # - Without layer normalization
+            if not use_layer_normalization:
+                next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
+            # - With layer normalization
             else:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_multiplications = next_state_dim * next_state_dim * nodes
-                # - With layer normalization
-                else:
-                    next_state_multiplications = nodes * (next_state_dim * next_state_dim + 3 * next_state_dim)
+                next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
 
-                num_multiplications += gnn_conv_multiplications + next_state_multiplications
+            num_multiplications += gnn_conv_multiplications + next_state_multiplications
 
         # 3. Logits
         logits_multiplications = next_state_dim * num_classes
@@ -224,7 +199,8 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
 
         
     elif mode == 'base_gcn':
-
+        # Note: This mode computes the number of multiplications for both base_gnn_model_using_gcn and base_gnn_model_using_gcn_with_residual_blocks.
+        #       Indeed, the residual connection is just an addition, so it does not contribute to the number of multiplications.
         # 1. Initial state encoding
         num_multiplications = nodes * mfccs * feature_dim
         
@@ -242,22 +218,12 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
 
             # 2b. Next state computation
-            # NextStateFromConcat
-            if not residual_next_state:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-                # - With layer normalization
-                else:
-                    next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-            # ResidualNextState
-            else: 
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_multiplications = next_state_dim * next_state_dim * nodes
-                # - With layer normalization
-                else:
-                    next_state_multiplications = nodes * (next_state_dim * next_state_dim + 3 * next_state_dim)
+            # - Without layer normalization
+            if not use_layer_normalization:
+                next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
+            # - With layer normalization
+            else:
+                next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
 
             num_multiplications += gcn_conv_multiplications + next_state_multiplications
 
@@ -316,33 +282,19 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             attention_multiplications = 2 * nodes * per_head_channels * num_heads
 
             gat_conv_multiplications = linear_multiplications + attention_multiplications
+
             # 2c. Next state computation:
-
-            # NODES:
-            # NextStateFromConcat
-            if not residual_next_state:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-            # ResidualNextState
-            else:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * next_state_dim * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * (next_state_dim * next_state_dim + 3 * next_state_dim)
-
-            # CONTEXT NODE (NextStateFromConcat):
             # - Without layer normalization
             if not use_layer_normalization:
-                    # Concatenates the heads result (num_heads * per_head channels) to the node features and then applies a dense layer
-                    next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim
+                # Nodes:
+                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
+                # Context node: concatenates the heads result (num_heads * per_head channels) to the node features and then applies a dense layer
+                next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim
             # - With layer normalization
             else:
+                # Nodes:
+                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
+                # Context node:
                 next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim + 3 * next_state_dim
 
             num_multiplications += gnn_conv_multiplications + gat_conv_multiplications + next_state_node_multiplications + next_state_context_multiplications
@@ -376,31 +328,17 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             gat_conv_multiplications = linear_multiplications + attention_multiplications
 
             # 2c. Next state computation
-
-            # NODES:
-            # NextStateFromConcat
-            if not residual_next_state:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-            # ResidualNextState
-            else:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * next_state_dim * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * (next_state_dim * next_state_dim + 3 * next_state_dim)
-
-            # CONTEXT NODE (NextStateFromConcat):
             # - Without layer normalization
             if not use_layer_normalization:
+                # Nodes:
+                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
+                # Context node:
                 next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim
             # - With layer normalization
             else:
+                # Nodes:
+                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
+                # Context node:
                 next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim + 3 * next_state_dim
 
             num_multiplications += gcn_conv_multiplications + gat_conv_multiplications + next_state_node_multiplications + next_state_context_multiplications
@@ -428,22 +366,12 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
 
             # 2b. Next state computation for nodes
-            # NextStateFromConcat
-            if not residual_next_state:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-            # ResidualNextState
+            # - Without layer normalization
+            if not use_layer_normalization:
+                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
+            # - With layer normalization
             else:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * next_state_dim * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * (next_state_dim * next_state_dim + 3 * next_state_dim)
+                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
 
             num_multiplications += gcn_conv_multiplications + next_state_node_multiplications
 
@@ -454,7 +382,7 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
         attention_multiplications = 2 * nodes * per_head_channels * num_heads
         gat_conv_multiplications = linear_multiplications + attention_multiplications
 
-        # 4. Next state computation for context node (NextStateFromConcat):
+        # 4. Next state computation for context node:
         # - Without layer normalization
         if not use_layer_normalization:
             next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim
@@ -490,31 +418,17 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
             context_pooling_multiplications = next_state_dim
 
             # 2c. Next state computation
-
-            # NODES:
-            # NextStateFromConcat
-            if not residual_next_state:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-            # ResidualNextState
-            else:
-                # - Without layer normalization
-                if not use_layer_normalization:
-                    next_state_node_multiplications = nodes * next_state_dim * next_state_dim
-                # - With layer normalization
-                else:
-                    next_state_node_multiplications = nodes * (next_state_dim * next_state_dim + 3 * next_state_dim)
-            
-            # CONTEXT NODE (NextStateFromConcat):
             # - Without layer normalization
             if not use_layer_normalization:
+                # Nodes:
+                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
+                # Context node:
                 next_state_context_multiplications = (context_dim + next_state_dim) * next_state_dim   # concatenates current context + pooled nodes
             # - With layer normalization
             else:
+                # Nodes:
+                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
+                # Context node:
                 next_state_context_multiplications = (context_dim + next_state_dim) * next_state_dim + 3 * next_state_dim
 
             num_multiplications += gcn_conv_multiplications + context_pooling_multiplications + next_state_node_multiplications + next_state_context_multiplications
@@ -523,6 +437,9 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += logits_multiplications
 
+
+    else:
+        raise ValueError(f"Unknown mode: {mode}. Supported modes are 'gnn', 'gnn_weighted', 'base_gcn', 'gat_v2', 'gat_gcn', 'gat_gcn_v2' and 'gcn'.")
 
         
     return num_multiplications
