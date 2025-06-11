@@ -67,6 +67,24 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
         # Fix self loops by setting diagonal to 0
         adjacency_matrix = tf.linalg.set_diag(adjacency_matrix, tf.zeros(num_frames, dtype=tf.float32))
 
+
+        adjacency_matrices.append(adjacency_matrix)
+
+        dilation_rate = 2
+
+        for i in range(n_dilation_layers):
+            adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=dilation_rate)
+            # Substitute the weights of the edges with the cosine similarity values
+            similarity_matrix = normalized_cosine_similarity(mfcc, num_frames)
+            adjacency_matrix_dilated = tf.where(adjacency_matrix_dilated > 0, similarity_matrix, adjacency_matrix_dilated)
+            # Append the dilated adjacency matrix to the list
+            adjacency_matrices.append(adjacency_matrix_dilated)
+            # Increase the dilation rate for the next layer
+            dilation_rate += 2
+
+
+
+
     
 
     elif mode == 'cosine window':

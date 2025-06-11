@@ -258,7 +258,7 @@ def train_model(train_ds, val_ds, test_ds, input_shape, num_classes=12, epochs=2
         # Use the default feature maps for res15
         model = create_res15_model(input_shape, num_classes)
     else:
-        raise ValueError("Invalid model type. Choose 'res8' or 'res15'.")
+        raise ValueError("Invalid model type. Choose 'res8_narrow' or 'res15'.")
 
 
     # Print model summary
@@ -271,21 +271,34 @@ def train_model(train_ds, val_ds, test_ds, input_shape, num_classes=12, epochs=2
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits = False),
         metrics = [tf.keras.metrics.SparseCategoricalAccuracy()]
     )
+
+
+    callbacks = [
+        tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.1,
+                patience=5,
+                min_lr=0.00001
+            ),
+        
+
+        # Tensorflow doesn't provide model saving for GNNs, so we save weights in a checkpoint
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath='best_model_weights_cnn.h5',  
+            monitor='val_loss',
+            save_best_only=True,
+            save_weights_only=True,  
+            verbose=1)
+    ]
     
-    # Learning rate schedule as described in the paper
-    lr_schedule = tf.keras.callbacks.ReduceLROnPlateau(
-        monitor='val_loss',
-        factor=0.1,
-        patience=5,
-        min_lr=0.00001
-    )
+
     
     # Train the model
     history = model.fit(
         train_ds,
         validation_data=val_ds,
         epochs=epochs,
-        callbacks=[lr_schedule]
+        callbacks=callbacks
     )
 
   #  test_measurements = model.evaluate(test_ds)
