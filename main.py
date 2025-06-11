@@ -168,7 +168,7 @@ def main():
 
 
 
-       #     _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', threshold= 0, cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
+            _, adjacency_matrix, _ = utils_graph.create_adjacency_matrix(mfcc = example_mfcc, num_frames=N_FRAMES, label = example_label, mode='similarity', threshold= 0, cosine_window_thresh = 0.3,window_size_cosine= 3, window_size=5)
 
 
         # utils_data.listen_audio(example_wav, sample_rate=SAMPLE_RATE)
@@ -190,21 +190,29 @@ def main():
 
             
 
-            train_ds = train_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
-            val_ds = val_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
-            test_ds = test_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 10, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0.3))
+            train_ds = train_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
+            val_ds = val_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label, mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
+            test_ds = test_ds_og.map(lambda mfcc, wav, label: utils_graph.create_adjacency_matrix(mfcc, N_FRAMES, label,mode='cosine window',window_size_cosine = 25, n_dilation_layers= N_DILATION_LAYERS, window_size=5, threshold = 0))
             # Check the shape of the dataset
-         #   for mfcc, adjacency_matrices, label in train_ds.take(1):
-         #       print(f"MFCC shape: {mfcc.shape}")
+            for mfcc, adjacency_matrices, label in train_ds.take(1):
+                print(f"MFCC shape: {mfcc.shape}")
 
 
-          #      print(f"Label shape: {label.shape}")
-          #      example_mfcc = mfcc
-          #      example_adjacency_matrix = adjacency_matrices[0]
+                print(f"Label shape: {label.shape}")
+                example_mfcc = mfcc
+                example_adjacency_matrix = adjacency_matrices[0]
 
             
             # Adjacency test
-            # utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
+            utils_graph.visualize_adjacency_matrix(example_adjacency_matrix, title="Adjacency Matrix")
+
+            # Multiplication calculcation
+            num_edges = utils_metrics.count_edges(example_adjacency_matrix)
+            print(num_edges)
+            mults = utils_metrics.calculate_multiplications('base_gcn', feature_dim = 64, num_edges = 2125, message_dim = 128, next_state_dim = 128,
+                                                            message_layers = 4, reduced = False, k_reduced = 0,
+                                                            num_heads = 2, per_head_channels=128, use_layer_normalization=True)
+            print(mults)
 
        #     spectrogram, _ = utils_data.get_spectrogram(wav, sample_rate = 16000) 
        #     gam_filters = utils_data.create_gammatone_filterbank(fft_size=FRAME_LENGTH)
@@ -236,7 +244,7 @@ def main():
             # utils_graph.visualize_adjacency_matrix(dilated, title="Adjacency Matrix")
             
 
-
+            """
 
             # Finally, we create our final dataset, which puts mfcc's & adjacney matrices together into a graph
 
@@ -477,7 +485,7 @@ def main():
     #  )
 
     
-
+    """
 
 
 
