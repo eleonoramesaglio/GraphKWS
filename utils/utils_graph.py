@@ -6,7 +6,7 @@ import networkx as nx
 import scipy as sp
 
 
-#TODO: alpha, beta and threshold are best to be tuned on a validation set
+
 def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dilation_layers = 0, window_size = 5, window_size_cosine = 10, cosine_window_thresh = 0.3, alpha = 0.7, beta = 0.1, threshold = 0.3):
     """
     Create a custom adjacency matrix for the graph.
@@ -75,8 +75,8 @@ def create_adjacency_matrix(mfcc, num_frames, label, mode = 'similarity', n_dila
         for i in range(n_dilation_layers):
             adjacency_matrix_dilated = create_dilated_adjacency_matrix(adjacency_matrix, dilation_rate=dilation_rate)
             # Substitute the weights of the edges with the cosine similarity values
-            similarity_matrix = normalized_cosine_similarity(mfcc, num_frames)
-            adjacency_matrix_dilated = tf.where(adjacency_matrix_dilated > 0, similarity_matrix, adjacency_matrix_dilated)
+         #   similarity_matrix = normalized_cosine_similarity(mfcc, num_frames)
+         #   adjacency_matrix_dilated = tf.where(adjacency_matrix_dilated > 0, similarity_matrix, adjacency_matrix_dilated)
             # Append the dilated adjacency matrix to the list
             adjacency_matrices.append(adjacency_matrix_dilated)
             # Increase the dilation rate for the next layer

@@ -10,7 +10,7 @@ import random
 import platform
 from pathlib import Path
 import sounddevice as sd
-from utils_spec_augmentation import *
+from utils.utils_spec_augmentation import *
 from scipy.signal import gammatone
 import librosa 
 import urllib.request
@@ -85,7 +85,7 @@ def read_path_to_wav(file_path):
 
 def listen_audio(wav, sample_rate=16000):
     """
-    Listen to the audio waveform in a Python script.
+    Listen to the audio.
     
     Args:
         wav: Audio waveform tensor or numpy array
@@ -109,7 +109,7 @@ def listen_audio(wav, sample_rate=16000):
 # THESE TWO FOR SINGLE WAV FILES
 
 def add_noise(wav, noise_dir='speech_commands_v0.02/_background_noise_', 
-              noise_type='random', min_snr_db=-5, max_snr_db=10):
+              noise_type='random', min_snr_db=-5, max_snr_db=10, specific_snr = None):
     """
     Add noise to an audio waveform at a random SNR between min_snr_db and max_snr_db.
     Using : https://github.com/hrtlacek/SNR/blob/main/SNR.ipynb
@@ -154,7 +154,10 @@ def add_noise(wav, noise_dir='speech_commands_v0.02/_background_noise_',
     noise_power = tf.reduce_mean(tf.square(noise_segment))
     
     # Generate random SNR in the specified range
-    target_snr_db = random.uniform(min_snr_db, max_snr_db)
+    if not specific_snr:
+        target_snr_db = random.uniform(min_snr_db, max_snr_db)
+    else:
+        target_snr_db = specific_snr
     
     # Calculate the scaling factor for the noise
     target_snr_linear = 10 ** (target_snr_db / 10)
@@ -352,18 +355,58 @@ def preprocess_audio_OLD(file_path, label, sample_rate, frame_length, frame_step
 
 
 
+def apply_time_shift(wav, sample_rate, max_time_shift_ms):
+    """
+    Apply random time shift to the waveform.
+    
+    Args:
+        wav: Input waveform tensor
+        sample_rate: Sample rate (typically 16000)
+        max_time_shift_ms: Maximum shift in milliseconds (set to 100 ms in our case, to mimic Tang paper)
+    
+    Returns:
+        Time-shifted waveform
+    """
+    # Convert milliseconds to samples
+    max_shift_samples = int((max_time_shift_ms / 1000.0) * sample_rate)
+    
+    # Generate random shift between -max_shift_samples and +max_shift_samples
+    shift_samples = tf.random.uniform(
+        shape=[],
+        minval=-max_shift_samples,
+        maxval=max_shift_samples + 1,
+        dtype=tf.int32
+    )
+
+    # Get the length of the waveform
+    wav_length = tf.shape(wav)[0]
+    
+    # Apply the shift using tf.roll (circular shift)
+    shifted_wav = tf.roll(wav, shift=shift_samples, axis=0)
+    
+    return shifted_wav
 
 def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, gammatone=False, 
                      noise=False, spec_augmentation=False, noise_type='random', 
-                     noise_prob=0.8, min_snr_db=-5, max_snr_db=10, return_both=False, freq_param = None, time_param = None):
+                     noise_prob=0.8, min_snr_db=-5, max_snr_db=10, return_both=False, freq_param = None, time_param = None, time_shift = False, max_time_shift_ms=100):
     """
-    Preprocess the audio file by loading, trimming/padding, and normalizing.
+    Preprocess the audio file by loading, trimming/padding, adding augmentation methods (noise/SpecAugment/Time Shift), turning into MFCCs/GFCCs.
     
     Args:
         file_path: Path to the audio file
         label: Label of the audio file
         noise: Boolean indicating whether to add noise or not
         return_both: Whether to return both original and augmented versions
+        gammatone: Whether to use Gammatone filterbanks instead of Mel filterbanks
+        spec_augmentation: Whether to apply SpecAugmentation
+        noise_type: Type of noise to add ('random' or one of the 6 possibilities provided in the dataset)
+        noise_prob: Probability of adding noise (between 0 and 1) ; fixed to 0.8 to mimic Tang paper
+        min_snr_db: Minimum SNR in dB for noise addition ; fixed to -5 to mimic Sainath paper
+        max_snr_db: Maximum SNR in dB for noise addition ; fixed to 10 to mimic Sainath paper
+        freq_param: Frequency parameter for SpecAugmentation (if None, uses default values)
+        time_param: Time parameter for SpecAugmentation (if None, uses default values)
+        time_shift: Whether to apply time shift augmentation
+        max_time_shift_ms: Maximum time shift in milliseconds (default is 100 ms, as in Tang paper)
 
     Returns:
         If return_both is False:
@@ -402,6 +445,11 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
     # Squeeze the wav (i.e. remove the channel dimension (we have one channel))
     wav = tf.squeeze(wav, axis = -1)
 
+
+
+    if time_shift:
+        wav = apply_time_shift(wav, sample_rate, max_time_shift_ms)
+
     if noise == True:
         # Load the noise files
         noise_files = list(pathlib.Path('speech_commands_v0.02/_background_noise_').glob('*.wav'))
@@ -439,20 +487,6 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
 
 
         
-        # Get a random segment of noise
-     #   if "exercise_bike" in noise_file:
-     #       noise_length = 980062
-      ##  if "doing_the_dishes" in noise_file:
-       #     noise_length = 1522930
-       # if "dude_miaowing" in noise_file:
-        #    noise_length = 988891
-       # if "noise" in noise_file:
-       #     noise_length = 960000
-       # if "running_tap" in noise_file:
-       #     noise_length = 978488
-
-
-
         noise_length = tf.shape(noise_wav)[0]
 
 
@@ -542,7 +576,7 @@ def preprocess_audio(file_path, label, sample_rate, frame_length, frame_step, ga
 
 def download_and_prepare_dataset(data_dir="speech_commands_v0.02", force_download=False):
     """
-    Downloads and extracts the Speech Commands dataset if it doesn't exist.
+    Downloads and extracts the Speech Commands dataset (V2).
     
     Args:
         data_dir: Directory where the dataset will be stored
@@ -589,9 +623,7 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
         validation_file: Path to validation_list.txt
         test_file: Path to testing_list.txt
         batch_size: Batch size for the dataset
-        sample_rate: Sample rate for the audio files
-        duration: Duration in seconds to crop/pad audio files
-    
+
     Returns:
         train_ds, val_ds, test_ds: TensorFlow datasets for each split
     """
@@ -651,9 +683,31 @@ def load_audio_dataset(data_dir, validation_file, test_file, batch_size=32):
     
 def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step, mode='train', 
                     noise_prob=0.8, gammatone=False, noise=False, spec_augmentation=False, 
-                    noise_type='random', min_snr_db=-5, max_snr_db=10, freq_param = None, time_param = None, spec_prob = 0.8):
+                    noise_type='random', min_snr_db=-5, max_snr_db=10, freq_param = None, time_param = None, spec_prob = 0.8, time_shift = False, max_time_shift_ms=100):
     """
-    Create a TensorFlow dataset from the audio files and labels.
+
+    Create the dataset in tensorflow fashion.
+
+    Args:
+        file_path: Path to the audio file
+        label: Label of the audio file
+        noise: Boolean indicating whether to add noise or not
+        return_both: Whether to return both original and augmented versions
+        gammatone: Whether to use Gammatone filterbanks instead of Mel filterbanks
+        spec_augmentation: Whether to apply SpecAugmentation
+        noise_type: Type of noise to add ('random' or one of the 6 possibilities provided in the dataset)
+        noise_prob: Probability of adding noise (between 0 and 1) ; fixed to 0.8 to mimic Tang paper
+        min_snr_db: Minimum SNR in dB for noise addition ; fixed to -5 to mimic Sainath paper
+        max_snr_db: Maximum SNR in dB for noise addition ; fixed to 10 to mimic Sainath paper
+        freq_param: Frequency parameter for SpecAugmentation (if None, uses default values)
+        time_param: Time parameter for SpecAugmentation (if None, uses default values)
+        time_shift: Whether to apply time shift augmentation
+        max_time_shift_ms: Maximum time shift in milliseconds (default is 100 ms, as in Tang paper)
+
+    Returns:
+        ds: TensorFlow dataset containing preprocessed audio features and labels
+
+    
     """
     # Create datasets
     ds = tf.data.Dataset.from_tensor_slices((path_files, labels))
@@ -672,8 +726,10 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
                 noise=noise, noise_prob=noise_prob,
                 noise_type=noise_type, min_snr_db=min_snr_db, 
                 max_snr_db=max_snr_db, return_both=True,
-                  freq_param = freq_param, 
-                  time_param = time_param, 
+                freq_param = freq_param, 
+                time_param = time_param,
+                time_shift = time_shift,
+                max_time_shift_ms=max_time_shift_ms
             ),
             num_parallel_calls=tf.data.AUTOTUNE
         )
@@ -727,7 +783,8 @@ def create_tf_dataset(path_files, labels, sample_rate, frame_length, frame_step,
 def noise_reduction(wav, noise_threshold=0.1, frame_length = 400, frame_step = 160):
 
     """
-    Reduce noise in frequency domain before Mel filterbank application.
+    Reduce noise in frequency domain before filterbank application. 
+    Note : We did not use this function in the end.
     
     Parameters:
     -----------
@@ -775,6 +832,16 @@ def noise_reduction(wav, noise_threshold=0.1, frame_length = 400, frame_step = 1
 
 
 def get_spectrogram(wav, sample_rate = 16000):
+    """
+    
+    Compute the spectrogram of the audio waveform using Short-Time Fourier Transform (STFT).
+    Args:
+        wav: Audio waveform tensor
+        sample_rate: Sample rate of the audio (default is 16000 Hz)
+    Returns:
+        spectrogram: Spectrogram of the audio waveform
+        frame_step: Step size for the STFT frames
+    """
   # Taken partly from : https://www.tensorflow.org/tutorials/audio/simple_audio
 
 
@@ -792,7 +859,7 @@ def get_spectrogram(wav, sample_rate = 16000):
     frame_step = int(sample_rate * 0.010)  # 10 ms # like in lecture
 
     spectrogram = tf.signal.stft(wav, frame_length= frame_length, frame_step= frame_step, fft_length= frame_length,
-                        window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture (TODO: Eventually we can try different types of windows (e.g. Gaussian etc))
+                        window_fn= tf.signal.hamming_window) # using Hamming Window like in Lecture 
     # Obtain the magnitude of the STFT.
     spectrogram = tf.abs(spectrogram)
 
@@ -803,9 +870,16 @@ def get_spectrogram(wav, sample_rate = 16000):
     return spectrogram, frame_step
 
 
-# Function to compute the delta coefficients for the MFCCs/GNCCs:
+
 
 def compute_delta(mfccs, M):
+        """
+        Compute the delta coefficients for the given MFCCs/GFCCs.
+        Args:
+            mfccs: Tensor of shape (num_frames, num_coefficients) containing the MFCCs/GFCCs
+            M: Number of frames to consider for delta computation (typically 2 or 3)
+        
+        """
         # Get the number of frames (needed, bc tensorflow has None dynamically for the first dimension and we need it in calculations)
         frame_count = tf.shape(mfccs)[0]
     
@@ -841,6 +915,14 @@ def compute_delta(mfccs, M):
 
 
 def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
+    """
+    Apply Mel filterbanks to the spectrogram to obtain log-mel spectrogram.
+    Args:
+        spectrogram: Spectrogram tensor of shape (num_frames, num_spectrogram_bins)
+        sample_rate: Sample rate of the audio (default is 16000 Hz)
+    Returns:
+        log_mel_spectrogram: Log-mel spectrogram tensor
+        mel_filterbank: Mel filterbank used for the transformation"""
     # Taken partly from https://www.tensorflow.org/api_docs/python/tf/signal/mfccs_from_log_mel_spectrograms
 
     # Obtain the number of frequency bins of our spectrogram.
@@ -872,6 +954,20 @@ def apply_mel_filterbanks(spectrogram, sample_rate = 16000):
 
 
 def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
+
+    """
+    
+    Compute the MFCCs from the log-mel spectrogram.
+    Args:
+        log_mel_spectrogram: Log-mel spectrogram tensor of shape (num_frames, num_mel_filters)
+        wav: Audio waveform tensor
+        frame_length: Length of each frame in samples
+        frame_step: Step size between frames in samples
+        M: Number of frames to consider for delta computation (default is 2)
+    Returns:
+        mfccs: MFCCs tensor of shape (num_frames, num_mfcc_coefficients)
+
+    """
     
     # 1. Compute the DCT and select the coefficients 2, ... 13 from the log-mel spectrogram
     mfccs_0 = tf.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrogram)[..., 1:13]
@@ -910,9 +1006,9 @@ def get_mfccs(log_mel_spectrogram, wav, frame_length, frame_step, M = 2):
 
 
 
-# 2. Gammatone filterbanks -> GNCCs
+# 2. Gammatone filterbanks -> GFCCs
 #    Linear filters described by an impulse response that is the product of a gamma distribution and sinusoidal tone
-#    They are used in the extraction of GNCCs or PNCCs as they are more effective in noisy conditions
+#    They are used in the extraction of GFCCs as they are more effective in noisy conditions
 
 # In order to apply them, we define the following two functions: erb_space() and create_gammatone_filterbank()
 
@@ -1001,6 +1097,15 @@ def create_gammatone_filterbank(num_filters=26, sample_rate=16000, min_frequency
 # Finally, we apply the filterbank to our spectrogram
 
 def apply_gammatone_filterbanks(spectrogram, sample_rate=16000):
+
+    """
+    Apply Gammatone filterbanks to the spectrogram to obtain log-gammatone spectrogram.
+    Args:
+        spectrogram: Spectrogram tensor of shape (num_frames, num_spectrogram_bins)
+        sample_rate: Sample rate of the audio (default is 16000 Hz)
+    Returns:
+        log_gammatone_spectrogram: Log-gammatone spectrogram tensor
+    """
     
     # Define the frequency band we are interested in (same as mel filter implementation)
     min_frequency = 100
@@ -1028,6 +1133,18 @@ def apply_gammatone_filterbanks(spectrogram, sample_rate=16000):
 
 
 def get_gnccs(log_gammatone_spectrogram, wav, frame_length, frame_step, M = 2):
+    """
+
+    Compute the GFCCs from the log-gammatone spectrogram.
+    Args:
+        log_gammatone_spectrogram: Log-gammatone spectrogram tensor of shape (num_frames, num_gammatone_filters)
+        wav: Audio waveform tensor
+        frame_length: Length of each frame in samples
+        frame_step: Step size between frames in samples
+        M: Number of frames to consider for delta computation (default is 2)
+    Returns:
+        gnccs: GFCCs tensor of shape (num_frames, num_gncc_coefficients)
+    """
 
     # 1. Compute the DCT
     gnccs_full = tf.signal.dct(log_gammatone_spectrogram, type=2)
@@ -1073,6 +1190,8 @@ def visualize_single_waveform(wav, label):
     Args:
         wav : waveform file
         label : waveform label
+
+    
     
     """
     plt.figure(figsize=(20, 4))
@@ -1086,18 +1205,60 @@ def visualize_single_waveform(wav, label):
     class_name = label
     plt.title(class_name, fontsize=10)
     
-    # Improve y-axis
+
     plt.yticks(np.arange(-1.0, 1.1, 0.5), fontsize=8)
     plt.ylim([-1.1, 1.1])
     
-    # Improve x-axis
+ 
     plt.xticks(fontsize=8)
     
-    # Remove top and right spines for cleaner look
+ 
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
     
-    # Add very light grid for better readability
+   
+    plt.grid(True, linestyle='--', alpha=0.3)
+    
+    plt.show()
+
+
+def visualize_single_waveform_frames(wav, label, frame_length=400, frame_step=160):
+    """
+    Visualize a single waveform with x-axis in frame indices.
+    
+    Args:
+        wav: waveform file
+        label: waveform label
+        frame_length: length of each frame in samples
+        frame_step: step size between frames in samples
+    """
+    plt.figure(figsize=(20, 4))
+    
+    audio_signal = wav.numpy().flatten()
+    
+    # Convert sample indices to frame indices
+    sample_indices = np.arange(len(audio_signal))
+    frame_indices = (sample_indices - frame_length/2) / frame_step  # Center frames
+    
+    plt.plot(frame_indices, audio_signal, linewidth=1)
+    
+    plt.title(label, fontsize=10)
+    plt.xlabel("Frame Index")
+    plt.ylabel("Amplitude")
+    
+    # Set x-axis to show actual frame boundaries
+    plt.xlim([0, 97])  # 0 to 97 for 98 frames
+    plt.xticks(np.arange(0, 98, 10), fontsize=8)
+    
+    # Add vertical lines to show frame boundaries
+    for i in range(0, 98, 10):  # Every 10th frame
+        plt.axvline(x=i, color='red', linestyle='--', alpha=0.3)
+    
+    plt.yticks(np.arange(-1.0, 1.1, 0.5), fontsize=8)
+    plt.ylim([-1.1, 1.1])
+    
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
     plt.grid(True, linestyle='--', alpha=0.3)
     
     plt.show()
@@ -1131,18 +1292,18 @@ def visualize_waveforms(wavs, labels):
         class_name = labels[i]
         plt.title(class_name, fontsize=10)
         
-        # Improve y-axis
+ 
         plt.yticks(np.arange(-1.0, 1.1, 0.5), fontsize=8)
         plt.ylim([-1.1, 1.1])
         
-        # Improve x-axis
+
         plt.xticks(fontsize=8)
         
-        # Remove top and right spines for cleaner look
+   
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         
-        # Add very light grid for better readability
+  
         plt.grid(True, linestyle='--', alpha=0.3)
     
     plt.tight_layout(pad=2.0)  # Add padding between subplots
@@ -1217,6 +1378,13 @@ def visualize_wavs_by_class(wavs, labels, class_name):
 
 
 def visualize_single_spectrogram(spectrogram, frame_step, sample_rate=16000):
+    """
+    
+    Visualize a single spectrogram.
+    Args:
+        spectrogram: Spectrogram tensor of shape (num_frames, num_spectrogram_bins)
+        frame_step: Step size for the STFT frames
+        sample_rate: Sample rate of the audio (default is 16000 Hz)"""
     if len(spectrogram.shape) > 2:
         assert len(spectrogram.shape) == 3
         spectrogram = np.squeeze(spectrogram, axis=-1)
@@ -1247,6 +1415,15 @@ def visualize_single_spectrogram(spectrogram, frame_step, sample_rate=16000):
 
 
 def visualize_waveform_and_spectrogram(waveform, spectrogram, frame_step, label=None, sample_rate=16000):
+    """
+    Visualize a waveform and its corresponding spectrogram in a single figure with two subplots.
+    Args:
+        waveform: Audio waveform tensor
+        spectrogram: Spectrogram tensor of shape (num_frames, num_spectrogram_bins)
+        frame_step: Step size for the STFT frames
+        label: Optional label for the figure title
+        sample_rate: Sample rate of the audio (default is 16000 Hz)
+    """
     # Create a figure with two subplots, stacked vertically
     fig, axes = plt.subplots(2, 1, figsize=(12, 8))
     
@@ -1289,6 +1466,13 @@ def visualize_waveform_and_spectrogram(waveform, spectrogram, frame_step, label=
 
 
 def visualize_filterbank(filters, spectrogram, gammatone = False, sample_rate = 16000):
+    """
+    Visualize the filterbank applied to the spectrogram.
+    Args:
+        filters: Filterbank tensor of shape (num_spectrogram_bins, num_filters)
+        spectrogram: Spectrogram tensor of shape (num_frames, num_spectrogram_bins)
+        gammatone: Whether the filterbank is Gammatone (default is False, meaning Mel filterbank)
+    """
 
     plt.figure(figsize=(12, 6))
 
@@ -1311,6 +1495,13 @@ def visualize_filterbank(filters, spectrogram, gammatone = False, sample_rate = 
 
 
 def visualize_mfccs(mfccs, label, gammatone = False):
+    """
+    Visualize the MFCCs or GNCCs.
+    Args:
+        mfccs: MFCCs or GNCCs tensor of shape (num_frames, num_coefficients)
+        label: Label for the MFCCs/GNCCs (used as title)
+        gammatone: Whether the MFCCs are GNCCs (default is False, meaning MFCCs)
+    """
     # If there's a batch dimension and batch_size=1, remove it
     if len(mfccs.shape) == 3 and mfccs.shape[0] == 1:
         mfccs = mfccs[0]
