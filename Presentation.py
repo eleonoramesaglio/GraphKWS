@@ -139,12 +139,12 @@ def main():
         # Selecting a specific wav file (in this case, one with label 'left')
         EXAMPLE = 4
 
-        utils_data.visualize_single_waveform(wavs[EXAMPLE], label = names_labels[EXAMPLE])
+     #   utils_data.visualize_single_waveform(wavs[EXAMPLE], label = names_labels[EXAMPLE])
 
         wav_padded = utils_data.add_padding_or_trimming(wavs[EXAMPLE], target_length = 16000, padding_mode = 'zeros')
 
 
-        utils_data.visualize_single_waveform(wav = wav_padded, label = names_labels[EXAMPLE])
+       # utils_data.visualize_single_waveform(wav = wav_padded, label = names_labels[EXAMPLE])
 
 
         # We listen to the maximum noise and minimum noise that is added to the samples
@@ -162,9 +162,9 @@ def main():
         # Listen to the padded audio
        # utils_data.listen_audio(wav_padded, sample_rate = sample_rates[EXAMPLE].numpy())
         # Look at the very noisy waveform
-     #   utils_data.visualize_single_waveform(wav_noisy_hard, names_labels[EXAMPLE])
+    #    utils_data.visualize_single_waveform(wav_noisy_hard, names_labels[EXAMPLE])
         # Look at the little noisy waveform
-     #   utils_data.visualize_single_waveform(wav_noisy_little, names_labels[EXAMPLE])
+    #    utils_data.visualize_single_waveform(wav_noisy_little, names_labels[EXAMPLE])
 
 
         ## Spectrogram
@@ -175,7 +175,7 @@ def main():
         # SpecAugment
         spectrogram_augmented = utils_spec_augmentation.spec_augment_easy(spectrogram = spectrogram)
 
-    #    utils_data.visualize_single_spectrogram(spectrogram_augmented.numpy(), frame_step = FRAME_STEP)
+       # utils_data.visualize_single_spectrogram(spectrogram_augmented.numpy(), frame_step = FRAME_STEP)
 
 
         ## Spectrogram vs Waveform 
@@ -202,10 +202,10 @@ def main():
         gfccs = utils_data.get_gnccs(log_gammatone_spectrogram = log_gammatone_spectrogram, wav = wav_padded,frame_length = FRAME_LENGTH, frame_step = FRAME_STEP)
 
         # MFCCs
-    #    utils_data.visualize_mfccs(mfccs, label = 'MFCC')
+        utils_data.visualize_mfccs(mfccs, label = 'MFCC')
 
         # GFCCs
-    #    utils_data.visualize_mfccs(gfccs, label = 'GFCC', gammatone = True)
+        utils_data.visualize_mfccs(gfccs, label = 'GFCC', gammatone = True)
 
 
 
@@ -218,10 +218,10 @@ def main():
                                                                 mode = 'train', gammatone = GAMMATONE, noise = True, noise_prob = 0.8, spec_augmentation = SPEC_AUG, spec_prob = 0.8, time_shift = TIME_SHIFT),\
                                     utils_data.create_tf_dataset(val_files, val_labels,sample_rate= SAMPLE_RATE, 
                                                                 frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                                mode = 'val', gammatone = GAMMATONE, noise = False, spec_augmentation = False),\
+                                                                mode = 'val', gammatone = GAMMATONE, spec_augmentation = False),\
                                     utils_data.create_tf_dataset(test_files, test_labels, sample_rate= SAMPLE_RATE, 
                                                                 frame_length = FRAME_LENGTH, frame_step= FRAME_STEP,
-                                                                mode = 'test', gammatone = GAMMATONE, noise = False, spec_augmentation = False)
+                                                                mode = 'test', gammatone = GAMMATONE, spec_augmentation = False)
         
 
 

@@ -584,3 +584,236 @@ def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_st
 
         
     return num_multiplications
+
+
+
+
+
+
+### AFTER TESTING VISUALIZATIONS :
+
+
+def visualization_base_gnn():
+    models = [
+        'Base GNN',
+        '5 Dilation Layers,\nWindow Size 5',
+        'Cosine Window,\nWeighted Edges',
+        'Residual Next State',
+        'Multi-Branch\nNode Encoding',
+        'Time Shift/\nBest GNN (64 dim)',
+        'Best GNN (64 dim)\n+ SpecAug'
+    ]
+
+    accuracies = [85.57, 90.17, 90.21, 90.48, 91.08, 91.13, 91.87]
+    std_devs = [0.95, 0.21, 0.11, 0.54, 0.44, 0.22, 0.23]
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Create error bars
+    x_pos = np.arange(len(models))
+    ax.errorbar(x_pos, accuracies, yerr=std_devs, fmt='o-', capsize=5, 
+                color='lightblue', markersize=3, markerfacecolor='lightblue',
+                markeredgecolor='steelblue', markeredgewidth=0.5, 
+                ecolor='steelblue', elinewidth=2, linewidth=2, linestyle='-')
+
+    ax.set_xlabel('Model Architecture', fontsize= 15,  fontweight='bold')
+    ax.set_ylabel('Test Accuracy (%)', fontsize= 15,  fontweight='bold')
+
+
+    # Set x-axis labels
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(models, rotation=45, ha='right', fontsize=15)
+
+    # Set y-axis range to focus on the relevant accuracy range
+    ax.set_ylim(84, 93)
+
+
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+
+    for i, (acc, std) in enumerate(zip(accuracies, std_devs)):
+        ax.text(i, acc + std + 0.1, f'{acc:.2f}±{std:.2f}', 
+                ha='center', va='bottom', fontsize=12, fontweight='bold')
+
+
+    plt.tight_layout()
+    plt.savefig('imgs/Base_GNN_to_Best_GNN.png', dpi=300, bbox_inches='tight')
+
+
+
+def visualize_window_sizes_effect():
+    window_sizes = [5, 10, 15, 20, 25]
+    accuracies = [91.13, 90.61, 90.14, 89.26, 88.54]
+    std_devs = [0.22, 0.25, 0.16, 0.08, 0.09]
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot with connected dots and error bars
+    ax.errorbar(window_sizes, accuracies, yerr=std_devs, fmt='o-', capsize=0, 
+                color='steelblue', markersize=8, linewidth=2.5, 
+                markerfacecolor='lightblue', markeredgecolor='steelblue', 
+                markeredgewidth=2, ecolor='steelblue', elinewidth=2)
+
+    # Add custom dashed lines for error bars with horizontal caps
+    for ws, acc, std in zip(window_sizes, accuracies, std_devs):
+        # Vertical dashed line
+        ax.plot([ws, ws], [acc - std, acc + std], 'steelblue', linewidth=2, linestyle='--')
+        # Horizontal caps
+        cap_width = 0.3
+        ax.plot([ws - cap_width, ws + cap_width], [acc - std, acc - std], 'steelblue', 
+                linewidth=2, linestyle='-')
+        ax.plot([ws - cap_width, ws + cap_width], [acc + std, acc + std], 'steelblue', 
+                linewidth=2, linestyle='-')
+
+    # Customize the plot
+    ax.set_xlabel('Window Size', fontsize=15, fontweight='bold')
+    ax.set_ylabel('Test Accuracy (%)', fontsize=15, fontweight='bold')
+
+    # Set axis ranges
+    ax.set_xlim(0, 30)
+    ax.set_ylim(87.5, 92)
+
+    # Add grid for better readability
+    ax.grid(True, alpha=0.3, linestyle='--')
+
+    # Add value labels on each point (with std dev)
+    for ws, acc, std in zip(window_sizes, accuracies, std_devs):
+        ax.annotate(f'{acc:.2f}±{std:.2f}', (ws, acc), textcoords="offset points", 
+                    xytext=(0, std * 100 + 15), ha='center', fontsize=11, fontweight='bold')
+
+    # Set x-axis ticks to show all window sizes
+    ax.set_xticks(window_sizes)
+    ax.set_xticklabels(window_sizes, fontsize=12)
+
+
+
+    # Add legend
+    ax.legend(loc='upper right', fontsize=12)
+
+
+
+    plt.tight_layout()
+    plt.savefig('imgs/BestGNN_window_size_vs_accuracy.png', dpi=300, bbox_inches='tight')
+
+
+
+def visualize_reduced_nodes_effect():
+    # Data for each model
+    models = [
+        {
+            'name': 'GCN + Normal Node Encoding',
+            'color': 'green',
+            'reduced_nodes': [0, 2, 4],
+            'accuracies': [85.83, 84.94, 81.71],
+            'std_devs': [0.70, 0.45, 0.38],
+            'multiplies': ['1.738M', '901k', '491k']
+        },
+        {
+            'name': 'Best GNN (64 dim)',
+            'color': 'blue',
+            'reduced_nodes': [0, 2, 4],
+            'accuracies': [91.13, 89.80, 86.77],
+            'std_devs': [0.22, 0.33, 0.51],
+            'multiplies': ['6.831M', '3.479M', '1.008M']
+        },
+        {
+            'name': 'GAT-GCN',
+            'color': 'orange',
+            'reduced_nodes': [0, 2, 4],
+            'accuracies': [94.58, 94.08, 92.99],
+            'std_devs': [0.11, 0.15, 0.13],
+            'multiplies': ['15.071M', '7.642M', '4.004M']
+        }
+    ]
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    # X positions for each section (0, 2, 4 repeated 3 times with equal spacing)
+    section_spacing = 4 
+    x_positions = []
+    section_centers = []
+
+    for i in range(3):  # 3 sections
+        base_x = i * section_spacing
+        section_x = [base_x, base_x + 1, base_x + 2]
+        x_positions.extend(section_x)
+        section_centers.append(base_x + 1)  # Center of each section for labels
+
+    # Plot data for each model
+    for i, model in enumerate(models):
+        # Get x positions for this model's section
+        start_idx = i * 3
+        model_x = x_positions[start_idx:start_idx + 3]
+        
+        # Plot scatter points
+        ax.scatter(model_x, model['accuracies'], color=model['color'], s=100, zorder=3)
+        
+        # Add error bars with horizontal caps
+        for j, (x, acc, std) in enumerate(zip(model_x, model['accuracies'], model['std_devs'])):
+            # Vertical line
+            ax.plot([x, x], [acc - std, acc + std], color=model['color'], 
+                    linewidth=2, linestyle='--', zorder=2)
+            # Horizontal caps
+            cap_width = 0.1
+            ax.plot([x - cap_width, x + cap_width], [acc - std, acc - std], color=model['color'], 
+                    linewidth=2, linestyle='-', zorder=2)
+            ax.plot([x - cap_width, x + cap_width], [acc + std, acc + std], color=model['color'], 
+                    linewidth=2, linestyle='-', zorder=2)
+        
+        # Add multiplies labels above each point
+        for x, acc, std, mult in zip(model_x, model['accuracies'], model['std_devs'], model['multiplies']):
+            ax.text(x, acc + std + 0.5, mult, ha='center', va='bottom', 
+                    fontsize=15, fontweight='bold', color='black')
+
+    # Customize the plot
+    ax.set_xlabel('Number of Reduced Nodes', fontsize=15, fontweight='bold')
+    ax.set_ylabel('Test Accuracy (%)', fontsize=15, fontweight='bold')
+
+
+    # Set x-axis ticks and labels
+    all_x_ticks = []
+    all_x_labels = []
+    for i in range(3):  # 3 sections
+        base_x = i * section_spacing
+        all_x_ticks.extend([base_x, base_x + 1, base_x + 2])
+        all_x_labels.extend(['0', '2', '4'])
+
+    ax.set_xticks(all_x_ticks)
+    ax.set_xticklabels(all_x_labels, fontsize = 17)
+
+    # Set y-axis limits with some padding
+    all_accuracies = [acc for model in models for acc in model['accuracies']]
+    all_std_devs = [std for model in models for std in model['std_devs']]
+    y_min = min(all_accuracies) - max(all_std_devs) - 2
+    y_max = max(all_accuracies) + max(all_std_devs) + 3
+    ax.set_ylim(y_min, y_max)
+
+    # Add grid for better readability
+    ax.grid(True, alpha=0.3, linestyle='-', axis='y')
+
+    # Add vertical separators between sections
+    for i in range(1, 3):
+        sep_x = i * section_spacing - 0.5
+        ax.axvline(x=sep_x, color='gray', linestyle=':', alpha=0.5)
+
+    # Create legend
+    legend_elements = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=model['color'], 
+                                markersize=10, label=model['name']) for model in models]
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
+
+    plt.tight_layout()
+
+    plt.savefig('imgs/reduced_nodes_comparison.png', dpi=300, bbox_inches='tight')
+
+  
+
+def main():
+    visualization_base_gnn()
+    visualize_window_sizes_effect()
+    visualize_reduced_nodes_effect()
+
+
+if __name__ == '__main__':
+    main()

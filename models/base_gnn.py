@@ -384,7 +384,7 @@ def base_gnn_model(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"] 
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -692,7 +692,7 @@ def base_gnn_model_learning_edge_weights(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -931,7 +931,7 @@ def GAT_GCN_model_v2(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -1190,7 +1190,7 @@ def GAT_GCN_model(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -1464,7 +1464,7 @@ def base_GATv2_model(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -1736,7 +1736,7 @@ def base_gnn_model_using_gcn(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -1946,7 +1946,7 @@ def base_gnn_model_using_gcn_with_residual_blocks(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -2191,7 +2191,7 @@ def base_gnn_with_context_node_model_v2(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -2415,7 +2415,7 @@ def base_gnn_with_context_node_model(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -2637,7 +2637,7 @@ def base_gnn_weighted_model(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -2891,7 +2891,7 @@ def base_gnn_weighted_with_context_model_v2(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -3163,7 +3163,7 @@ def base_gnn_weighted_with_context_model(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
@@ -3422,7 +3422,7 @@ def GCN_model(
 
             if initial_state_mfcc_mode == 'normal':
                 return tf.keras.layers.Dense(initial_nodes_mfccs_layer_dims, activation="relu")(
-                    node_set["features"]  # This would be your mfcc_static features
+                    node_set["features"]  
                 )
             elif initial_state_mfcc_mode == 'splitted':
                 # Split the diff. features such that we can do separate layer learning
