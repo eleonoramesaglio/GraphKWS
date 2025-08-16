@@ -37,7 +37,7 @@ def main():
 
 
         # Set the mode of the model (i.e. CNN or GNN)
-        MODE_MODEL = 'CNN'
+        MODE_MODEL = 'GNN'
 
 
         SAMPLE_RATE = 16000 # given in the dataset
@@ -51,8 +51,8 @@ def main():
 
 
         # Whether to reduce the node representation of the graph (i.e. pooling over the 98 frames in groups of size k)
-        REDUCED_NODE_REP_BOOL = True
-        REDUCED_NODE_REP_K = 2
+        REDUCED_NODE_REP_BOOL = False
+        REDUCED_NODE_REP_K = 0
 
 
         # set the mode of the adjacency matrix ('window', 'similarity', 'cosine window')
@@ -201,11 +201,11 @@ def main():
         mfccs = utils_data.get_mfccs(log_mel_spectrogram, wav = wav_padded, frame_length = FRAME_LENGTH, frame_step = FRAME_STEP)
         gfccs = utils_data.get_gnccs(log_gammatone_spectrogram = log_gammatone_spectrogram, wav = wav_padded,frame_length = FRAME_LENGTH, frame_step = FRAME_STEP)
 
-        # MFCCs
-        utils_data.visualize_mfccs(mfccs, label = 'MFCC')
+        # Visualize MFCCs
+     #   utils_data.visualize_mfccs(mfccs, label = 'MFCC')
 
-        # GFCCs
-        utils_data.visualize_mfccs(gfccs, label = 'GFCC', gammatone = True)
+        # Visualize GFCCs
+     #   utils_data.visualize_mfccs(gfccs, label = 'GFCC', gammatone = True)
 
 
 
@@ -246,21 +246,18 @@ def main():
             test_ds_og = base_cnn.preprocess_data(test_ds_og
                                     , is_training=False)
 
-            y_pred, y_true = utils_metrics.get_ys(test_ds_og, model)
-
-
-            utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
-            # Precision, Recall, F1-score
             start_time = time.time()
-            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}") 
+            y_pred, y_true = utils_metrics.get_ys(test_ds_og, model)
             end_time = time.time()
 
-            test_time = end_time - start_time 
-            print("Test Time : ", test_time)
+            test_time = end_time - start_time
 
-            # res8-narrow : 0.008289813995361328
+            # Get the average time per sample
+            avg_time_per_sample = test_time / len(y_pred)
+            print(f"Average inference time per sample: {avg_time_per_sample:.6f} seconds")
 
-
+            utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
+            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}")
 
 
         else:
@@ -564,38 +561,58 @@ def main():
             # Load the best weights of a model instead of training 
             else:
                 # Load the best weights of the model (Note that the correct model architecture has to be set using i == 0)
-                base_model.load_weights('saved_models/gatgcnv2_nospec_reduced_2.h5')
+                base_model.load_weights('saved_models/gatgcnv2_nospec.h5')
             
 
             # utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx = i)
 
-            # Confusion matrix visualization
-            y_pred, y_true = utils_metrics.get_ys(test_ds, base_model)
-            utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
-
-            # Precision, Recall, F1-score
+            # Model Inference 
             start_time = time.time()
-            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}")
+            y_pred, y_true = utils_metrics.get_ys(test_ds, base_model)
             end_time = time.time()
+
             test_time = end_time - start_time
 
-            print("Test Time : ", test_time)
+            # Get the average time per sample
+            avg_time_per_sample = test_time / len(y_pred)
+            print(f"Average inference time per sample: {avg_time_per_sample:.6f} seconds")
 
-            # gnn weighted nospec : 0.00815582275390625
-            # gnn weighted spec :  0.007980823516845703
-            # gnn weighted nospec reduced 2 : 0.008828878402709961
-            # gnn weighted nospec reduced 4 : 0.00882101058959961
-            # gcn nospec normalnodeenc : 0.00865316390991211
-            # gcn spec normalnodeenc : 0.008502006530761719
-            # gcn nospec normalnodeenc reduced 2 : 0.008662939071655273
-            # gcn nospec normalnodeenc reduced 4 : 0.00885629653930664
-            # gatgcnv2 nospec : 0.008797168731689453
-            # gatgcnv2 spec : 0.008181095123291016
-            # gatgcnv2 nospec reduced 2 : 0.007928609848022461
+            # Confusion matrix
+            utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
+            # Precision, Recall, F1-score
+            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}")
+            
+
+
+            # test variation 1 but no dialtion layers (only reduced window size) : 0.000942s
+
+            # base gnn : 0.001445, 0.001387, 0.001406
+            # base gnn variation 1 (5 dilation layers, reduced window size 5) : 0.001886, 0.001858, 0.001915
+            # base gnn variation 2 (added weights) : 0.002074, 0.002049, 0.002244
+            # base gnn variation 3 (added res connections) : 0.001988, 0.001982, 0.002050
+            # base gnn variation 4 (splitted) : 0.002094, 0.002079, 0.002015
+            # base gnn variation 5 (time shift) : 0.002185, 0.002070, 0.002036 (should be same as splitted)
+            # base gnn variation 6 (specaug) : no significant change 
+
+            # best base gnn layer sizes 32 : 0.002011, 0.001999, 0.002077
+            # gcn dim 32 0.002141, 0.002236, 0.002162
+            # gcn dim 32 normal enc 0.002089, 0.002085, 0.002097
+            # res8 narrow  0.001139, 0.001824, 0.001049
+
+            # gat gcn 0.002297, 0.002275, 0.002339
+
+            # the reduced node ones 
+            # gnn best 64 dim at 2 0.001873,0.001859, 0.001921
+            # gnn best 64 dim at 4 0.001758, 0.001790, 0.001819
+
+            # gcn 32 dim at 2 0.001804,0.001770, 0.001870
+            # gcn 32 dim at 4 0.001582, 0.001630, 0.001608
+            # gat gcn at 2 0.001956, 0.002044, 0.001969
+            # gat gcn at 4 0.001777,0.001846, 0.001769
 
 
     
-        
+    
 
 
 if __name__ == '__main__':

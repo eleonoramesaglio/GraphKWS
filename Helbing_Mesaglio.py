@@ -33,6 +33,9 @@ def main():
 
     # This loop might look weird, but it is just such that we can change a single number below in the models to test different models (i.e. i == 0)
     for i in range(1):
+        # Set to true if the model is to be trained
+        TRAINING = False
+
 
         # Set the mode of the model (i.e. CNN or GNN)
         MODE_MODEL = 'GNN'
@@ -115,18 +118,32 @@ def main():
 
         # This is to train the low-footprint CNN model as presented in the Tang et al. paper, (res8 narrow)
         if MODE_MODEL == 'CNN':
-            model, history = base_cnn.train_model(train_ds_og, val_ds_og, test_ds_og, input_shape=(98, 39, 1), num_classes=35, epochs=30, model_type='res8_narrow')
+            if TRAINING:
+                model, history = base_cnn.train_model(train_ds_og, val_ds_og, test_ds_og, input_shape=(98, 39, 1), num_classes=35, epochs=30, model_type='res8_narrow')
+
+            else:
+                model = base_cnn.create_res8_narrow_model(input_shape=(98, 39, 1), num_classes=35)
+
+                model.load_weights('saved_models/cnn_res8narrow.h5')
+
 
 
             # Removing wav file 
             test_ds_og = base_cnn.preprocess_data(test_ds_og
                                     , is_training=False)
 
+            start_time = time.time()
             y_pred, y_true = utils_metrics.get_ys(test_ds_og, model)
-  
+            end_time = time.time()
 
-            # Precision, Recall, F1-score
-            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}") 
+            test_time = end_time - start_time
+
+            # Get the average time per sample
+            avg_time_per_sample = test_time / len(y_pred)
+            print(f"Average inference time per sample: {avg_time_per_sample:.6f} seconds")
+
+            utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
+            utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}")
     
         
 
@@ -306,7 +323,7 @@ def main():
 
 
                 
-            if i == 0:
+            if i == 1:
                 base_model = base_gnn.base_gnn_model_using_gcn(graph_tensor_specification = graphs_spec,
                                                               n_message_passing_layers = 5,
                                                               use_residual_next_state = True,
@@ -351,7 +368,7 @@ def main():
                                             l2_reg_factor= 1e-4,
                                             )
                 
-            if i == 1:
+            if i == 0:
                 base_model = base_gnn.GAT_GCN_model_v2(graph_tensor_specification = graphs_spec,
                                                               n_message_passing_layers = 5,
                                                               use_residual_next_state = True,
@@ -401,9 +418,6 @@ def main():
             # Model Summary
             print(base_model.summary())
 
-            # Set to true if the model is to be trained
-            TRAINING = True
-
             if TRAINING:
 
                 start_time = time.time()
@@ -426,15 +440,24 @@ def main():
             # Load the best weights of a model instead of training 
             else:
                 # Load the best weights of the model (Note that the correct model architecture has to be set using i == 0)
-                base_model.load_weights('saved_models/gatgcnv2_mediumfootprint_9470.h5')
+                base_model.load_weights('saved_models/gatgcnv2_spec.h5')
             
 
            # utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx = i)
 
-            # Confusion matrix visualization
+            # Model Inference 
+            start_time = time.time()
             y_pred, y_true = utils_metrics.get_ys(test_ds, base_model)
-            utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
+            end_time = time.time()
 
+            test_time = end_time - start_time
+
+            # Get the average time per sample
+            avg_time_per_sample = test_time / len(y_pred)
+            print(f"Average inference time per sample: {avg_time_per_sample:.6f} seconds")
+
+            # Confusion matrix
+            utils_metrics.visualize_confusion_matrix(y_pred, y_true, idx = i)
             # Precision, Recall, F1-score
             utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}")
     
