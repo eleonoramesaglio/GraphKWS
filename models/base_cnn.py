@@ -6,12 +6,6 @@ def residual_block_narrow(inputs, filters):
     """
     Create a residual block for res8_narrow.
     
-    Args:
-        inputs: Input tensor
-        filters: Number of feature maps (n=19 for narrow variant)
-    
-    Returns:
-        Output tensor after applying the residual block
     """
     # First convolutional layer with batch normalization and ReLU
     x = tf.keras.layers.Conv2D(
@@ -46,12 +40,6 @@ def create_res8_narrow_model(input_shape, num_classes=12):
     """
     Create the res8-narrow model as described in the Tang et al. paper.
     
-    Args:
-        input_shape: Shape of input MFCC features (timesteps, mfcc_features, 1)
-        num_classes: Number of output classes
-    
-    Returns:
-        res8-narrow model
     """
     # Number of feature maps for narrow variant
     feature_maps = 19
@@ -91,13 +79,6 @@ def preprocess_data(dataset, batch_size=64, is_training=True):
     """
     Preprocess the dataset for training or evaluation.
     
-    Args:
-        dataset: TensorFlow dataset containing MFCC features and labels
-        batch_size: Batch size for training/evaluation
-        is_training: Whether this is for training (includes shuffling and augmentation)
-    
-    Returns:
-        Processed dataset ready for the model
     """
     # Ignore wav files and only use MFCC features and labels
     dataset = dataset.map(lambda mfcc, wav, label: (mfcc, label))
@@ -125,15 +106,6 @@ def train_model(train_ds, val_ds, test_ds, input_shape, num_classes=12, epochs=2
     """
     Train the res8 narrow model
     
-    Args:
-        train_ds: Training dataset
-        val_ds: Validation dataset
-        input_shape: Shape of input MFCC features
-        num_classes: Number of output classes
-        epochs: Number of training epochs
-    
-    Returns:
-        Trained model
     """
     # Process datasets
     train_ds = preprocess_data(train_ds, is_training=True)

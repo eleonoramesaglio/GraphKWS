@@ -31,7 +31,9 @@ def main():
     # Download the Dataset 
     data_dir = utils_data.download_and_prepare_dataset()
 
-    for i in range(1):
+    SHOWN_MODELS = ['saved_models/gnn_weighted_spec.h5','saved_models/gcn_spec_normalnodeenc.h5', 'saved_models/gatgcnv2_nospec.h5', 'saved_models/gatgcnv2_nospec_reduced_2.h5']
+
+    for i in range(len(SHOWN_MODELS)):
         # Set to true if the model is to be trained
         TRAINING = False
 
@@ -51,8 +53,9 @@ def main():
 
 
         # Whether to reduce the node representation of the graph (i.e. pooling over the 98 frames in groups of size k)
-        REDUCED_NODE_REP_BOOL = False
-        REDUCED_NODE_REP_K = 0
+        # Setup for presentation 
+        REDUCED_NODE_REP_BOOL = False if i < 3 else True
+        REDUCED_NODE_REP_K = 0 if i < 3 else 2 
 
 
         # set the mode of the adjacency matrix ('window', 'similarity', 'cosine window')
@@ -71,7 +74,7 @@ def main():
         WINDOW_SIZE_SIMPLE = 5
         # Cosine window threshold (for 'cosine window')
         COSINE_WINDOW_THRESH = 0.3
-        # Threshold for the similarity adjacency matrix (for 'similarity')
+        # Threshold for the similarity adjacency matrix (for 'similarity') (we didn't use this in the end) 
         SIMILARITY_THRESH = 0.3
 
         # Load data
@@ -98,8 +101,8 @@ def main():
         # Concatenate the dataframes
         all_df = pd.concat([train_df, val_df, test_df], ignore_index=True)
 
-        # To visualize the data distribution (but also already given in Warden Paper, so not necessary)
-        #visualize_data_distribution(all_df)
+        # To visualize the data distribution (but also already given in Warden Paper)
+        #utils_data.visualize_data_distribution(all_df)
 
 
         # Analysis on some random samples
@@ -139,12 +142,12 @@ def main():
         # Selecting a specific wav file (in this case, one with label 'left')
         EXAMPLE = 4
 
-     #   utils_data.visualize_single_waveform(wavs[EXAMPLE], label = names_labels[EXAMPLE])
+        #utils_data.visualize_single_waveform(wavs[EXAMPLE], label = names_labels[EXAMPLE])
 
         wav_padded = utils_data.add_padding_or_trimming(wavs[EXAMPLE], target_length = 16000, padding_mode = 'zeros')
 
 
-       # utils_data.visualize_single_waveform(wav = wav_padded, label = names_labels[EXAMPLE])
+        #utils_data.visualize_single_waveform(wav = wav_padded, label = names_labels[EXAMPLE])
 
 
         # We listen to the maximum noise and minimum noise that is added to the samples
@@ -154,7 +157,7 @@ def main():
         
 
         # Listen to the audio
-    #    utils_data.listen_audio(wavs[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
+        #utils_data.listen_audio(wavs[EXAMPLE], sample_rate = sample_rates[EXAMPLE].numpy())
         # Listen to the really noisy audio
     #    utils_data.listen_audio(wav_noisy_hard, sample_rate = sample_rates[EXAMPLE].numpy())
         # Listen to the little noisy audio
@@ -175,7 +178,8 @@ def main():
         # SpecAugment
         spectrogram_augmented = utils_spec_augmentation.spec_augment_easy(spectrogram = spectrogram)
 
-       # utils_data.visualize_single_spectrogram(spectrogram_augmented.numpy(), frame_step = FRAME_STEP)
+        #utils_data.visualize_single_spectrogram(spectrogram.numpy(), frame_step = FRAME_STEP)
+        #utils_data.visualize_single_spectrogram(spectrogram_augmented.numpy(), frame_step = FRAME_STEP)
 
 
         ## Spectrogram vs Waveform 
@@ -202,10 +206,10 @@ def main():
         gfccs = utils_data.get_gnccs(log_gammatone_spectrogram = log_gammatone_spectrogram, wav = wav_padded,frame_length = FRAME_LENGTH, frame_step = FRAME_STEP)
 
         # Visualize MFCCs
-     #   utils_data.visualize_mfccs(mfccs, label = 'MFCC')
+        #utils_data.visualize_mfccs(mfccs, label = 'MFCC')
 
         # Visualize GFCCs
-     #   utils_data.visualize_mfccs(gfccs, label = 'GFCC', gammatone = True)
+        #utils_data.visualize_mfccs(gfccs, label = 'GFCC', gammatone = True)
 
 
 
@@ -294,8 +298,8 @@ def main():
                 print(f"Label shape: {label.shape}")
                 example_mfcc = mfcc
                 adjacency_matrix_undilated = adjacency_matrices[0]
-                adjacency_matrix_dilated_2 = adjacency_matrices[1]
-                adjacency_matrix_dilated_8 = adjacency_matrices[4]
+              #  adjacency_matrix_dilated_2 = adjacency_matrices[1]
+              #  adjacency_matrix_dilated_8 = adjacency_matrices[4]
 
 
 
@@ -305,11 +309,6 @@ def main():
            # utils_graph.visualize_adjacency_matrix(adjacency_matrix_dilated_8, title="Adjacency Matrix Dilated (8)")
 
             
-
-
-
-
-
             ## Calculation of Multiplications for the GNN models
 
             # In the case of the fixed window approaches, we calculate an upper bound where all edges are present (independent of threshold) ;
@@ -327,13 +326,12 @@ def main():
 
 
 
-            mults = utils_metrics.calculate_multiplications('base_gcn', feature_dim = 32, num_edges = num_edges, message_dim = 32, next_state_dim = 32,
-                                                            message_layers = 5, reduced = False, k_reduced = 0,
-                                                            num_heads = 0, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'normal')
-            print("Number of Multiplications :" , mults)
+            mults = utils_metrics.calculate_multiplications_new('gat_gcn_v2', feature_dim = 64, num_edges = num_edges, message_dim = 64, next_state_dim = 64,
+                                                            message_layers = 5, reduced = True, k_reduced = 4,
+                                                            num_heads = 5, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'splitted')
 
 
-            
+            print("Number of Multiplications:" , mults)
             # Finally, we create our final dataset, which puts MFCCs/GFCCs & adjacency matrices together in a graph (based on the GNN tensorflow API)
             train_ds = train_ds.map(lambda mfcc, adjacency_matrices, label: base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label, reduced_node_bool= REDUCED_NODE_REP_BOOL, reduced_node_k= REDUCED_NODE_REP_K))
             val_ds = val_ds.map(lambda mfcc, adjacency_matrices, label:  base_gnn.mfccs_to_graph_tensors_for_dataset(mfcc, adjacency_matrices, label, reduced_node_bool= REDUCED_NODE_REP_BOOL, reduced_node_k= REDUCED_NODE_REP_K))
@@ -359,7 +357,7 @@ def main():
 
         
             # Set i == 0 for the model that should be trained/tested 
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.base_gnn_model(graph_tensor_specification = graphs_spec,
                                             n_message_passing_layers = 5,
                                             use_residual_next_state = True,
@@ -374,7 +372,7 @@ def main():
                                             l2_reg_factor= 1e-4,
                                             )
                 
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.base_gnn_with_context_node_model(
                                             graph_tensor_specification = graphs_spec,
                                             initial_nodes_mfccs_layer_dims = 64,
@@ -390,7 +388,7 @@ def main():
                                             initial_state_mfcc_mode = 'normal',
                                             )
             # SHOWCASE 0 (gnn_weighted_nospec), # SHOWCASE 1 (gnn_weighted_spec), # SHOWCASE 2 (gnn_weighted_nospec_reduced_2) # SHOWCASE 3 (gnn_weighted_nospec_reduced_4)
-            if i == 1:
+            if i == 0:
                 base_model = base_gnn.base_gnn_weighted_model(
                                             graph_tensor_specification = graphs_spec,
                                             initial_nodes_mfccs_layer_dims = 64,
@@ -407,7 +405,7 @@ def main():
                                             use_residual_next_state= True,
                                             )
 
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.base_gnn_weighted_with_context_model(
                                             graph_tensor_specification = graphs_spec,
                                             initial_nodes_mfccs_layer_dims = 64,
@@ -423,7 +421,7 @@ def main():
                                             initial_state_mfcc_mode = 'normal',
                                             use_residual_next_state= False,
                                             )
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.base_gnn_weighted_with_context_model_v2(
                                             graph_tensor_specification = graphs_spec,
                                             initial_nodes_mfccs_layer_dims = 64,
@@ -456,7 +454,7 @@ def main():
                                                                 n_dilation_layers= N_DILATION_LAYERS,
                                                                 l2_reg_factor= 1e-4,
                                                                 )
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.GCN_model(graph_tensor_specification = graphs_spec,
                                                                 n_message_passing_layers = 3,
                                                                 use_residual_next_state = True,
@@ -472,7 +470,7 @@ def main():
                                                                 )
                 
             # NOTE : We did not test this model in the end as we didn't have time.
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.base_gnn_model_learning_edge_weights(graph_tensor_specification = graphs_spec,
                                             n_message_passing_layers = 3,
                                             use_residual_next_state = True,
@@ -487,7 +485,7 @@ def main():
                                             l2_reg_factor= 1e-4,
                                             )
             # SHOWCASE 8 (gatgcnv2_nospec) # SHOWCASE 9 (gatgcnv2_spec) # SHOWCASE 10 (gatgcnv2_nospec_reduced_2)
-            if i == 0:
+            if i == 2 or i == 3:
                 base_model = base_gnn.GAT_GCN_model_v2(graph_tensor_specification = graphs_spec,
                                                                 n_message_passing_layers = 5,
                                                                 use_residual_next_state = True,
@@ -502,7 +500,7 @@ def main():
                                                                 num_heads= 5,
                                                                 per_head_channels= 128
                                                                 )
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.GAT_GCN_model(graph_tensor_specification = graphs_spec,
                                                                 n_message_passing_layers = 3,
                                                                 use_residual_next_state = True,
@@ -518,7 +516,7 @@ def main():
                                                                 per_head_channels= 64
                                                                 )
                 
-            if i == 1:
+            if i == 10:
                 base_model = base_gnn.base_GATv2_model(graph_tensor_specification = graphs_spec,
                                                                 n_message_passing_layers = 2,
                                                                 use_residual_next_state = False,
@@ -561,10 +559,8 @@ def main():
             # Load the best weights of a model instead of training 
             else:
                 # Load the best weights of the model (Note that the correct model architecture has to be set using i == 0)
-                base_model.load_weights('saved_models/gatgcnv2_nospec.h5')
-            
+                base_model.load_weights(SHOWN_MODELS[i]) 
 
-            # utils_metrics.plot_history(history, columns=['loss', 'sparse_categorical_accuracy'], idx = i)
 
             # Model Inference 
             start_time = time.time()
@@ -582,34 +578,6 @@ def main():
             # Precision, Recall, F1-score
             utils_metrics.metrics_evaluation(y_pred, y_true, model_name = f"Model {i}")
             
-
-
-            # test variation 1 but no dialtion layers (only reduced window size) : 0.000942s
-
-            # base gnn : 0.001445, 0.001387, 0.001406
-            # base gnn variation 1 (5 dilation layers, reduced window size 5) : 0.001886, 0.001858, 0.001915
-            # base gnn variation 2 (added weights) : 0.002074, 0.002049, 0.002244
-            # base gnn variation 3 (added res connections) : 0.001988, 0.001982, 0.002050
-            # base gnn variation 4 (splitted) : 0.002094, 0.002079, 0.002015
-            # base gnn variation 5 (time shift) : 0.002185, 0.002070, 0.002036 (should be same as splitted)
-            # base gnn variation 6 (specaug) : no significant change 
-
-            # best base gnn layer sizes 32 : 0.002011, 0.001999, 0.002077
-            # gcn dim 32 0.002141, 0.002236, 0.002162
-            # gcn dim 32 normal enc 0.002089, 0.002085, 0.002097
-            # res8 narrow  0.001139, 0.001824, 0.001049
-
-            # gat gcn 0.002297, 0.002275, 0.002339
-
-            # the reduced node ones 
-            # gnn best 64 dim at 2 0.001873,0.001859, 0.001921
-            # gnn best 64 dim at 4 0.001758, 0.001790, 0.001819
-
-            # gcn 32 dim at 2 0.001804,0.001770, 0.001870
-            # gcn 32 dim at 4 0.001582, 0.001630, 0.001608
-            # gat gcn at 2 0.001956, 0.002044, 0.001969
-            # gat gcn at 4 0.001777,0.001846, 0.001769
-
 
     
     

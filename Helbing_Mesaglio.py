@@ -34,7 +34,7 @@ def main():
     # This loop might look weird, but it is just such that we can change a single number below in the models to test different models (i.e. i == 0)
     for i in range(1):
         # Set to true if the model is to be trained
-        TRAINING = False
+        TRAINING = True
 
 
         # Set the mode of the model (i.e. CNN or GNN)
@@ -99,8 +99,8 @@ def main():
         # Concatenate the dataframes
         all_df = pd.concat([train_df, val_df, test_df], ignore_index=True)
 
-        # To visualize the data distribution (but also already given in Warden Paper, so not necessary)
-        #visualize_data_distribution(all_df)
+        # To visualize the data distribution (but also already given in Warden Paper)
+        #utils_data.visualize_data_distribution(all_df)
 
 
         # Creation of the basic datasets (this can be used for the CNN model, for the GNN model we need to create the adjacency matrices)
@@ -195,21 +195,21 @@ def main():
             # In the case of the fixed window approaches, we calculate an upper bound where all edges are present (independent of threshold) ;
             # Therefore, we note that the actual number of multiplications will be lower in general.
             if ADJ_MODE == 'cosine window':
-                num_edges = N_FRAMES * WINDOW_SIZE_COSINE - N_FRAMES # for the window approaches, we calculate an upper bound where all edges are present (independent of threshold)
+                num_edges = N_FRAMES * WINDOW_SIZE_COSINE - N_FRAMES 
             elif ADJ_MODE == 'window':
                 num_edges = N_FRAMES * WINDOW_SIZE_SIMPLE - N_FRAMES
             # Use this to estimate number of edges for usage with similarity adjacency matrix (as the exact number of edges is not known beforehand) ; in general,
             # using some average over multiple examples would be a better idea, but since we find in our analysis that the similarity approach is not very useful,
-            # we also didn't spend too much time on this.
+            # we didn't spend too much time on this.
             # NOTE : this didn't make it in the report in the end due to already having 9 pages & not being that efficient
             elif ADJ_MODE == 'similarity':
                 num_edges = utils_metrics.count_edges(example_adjacency_matrix)
 
 
 
-            mults = utils_metrics.calculate_multiplications('base_gcn', feature_dim = 32, num_edges = num_edges, message_dim = 32, next_state_dim = 32,
+            mults = utils_metrics.calculate_multiplications_new('base_gcn', feature_dim = 32, num_edges = num_edges, message_dim = 32, next_state_dim = 32,
                                                             message_layers = 5, reduced = False, k_reduced = 0,
-                                                            num_heads = 0, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'normal')
+                                                            num_heads = 0, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'splitted')
             print("Number of Multiplications :" , mults)
 
 
@@ -271,7 +271,7 @@ def main():
                                           initial_state_mfcc_mode = 'normal',
                                           )
                 
-            if i == 1:
+            if i == 0:
                 base_model = base_gnn.base_gnn_weighted_model(
                                           graph_tensor_specification = graphs_spec,
                                           initial_nodes_mfccs_layer_dims = 32,
@@ -368,7 +368,7 @@ def main():
                                             l2_reg_factor= 1e-4,
                                             )
                 
-            if i == 0:
+            if i == 1:
                 base_model = base_gnn.GAT_GCN_model_v2(graph_tensor_specification = graphs_spec,
                                                               n_message_passing_layers = 5,
                                                               use_residual_next_state = True,
