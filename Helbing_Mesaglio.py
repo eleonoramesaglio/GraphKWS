@@ -207,9 +207,9 @@ def main():
 
 
 
-            mults = utils_metrics.calculate_multiplications_new('base_gcn', feature_dim = 32, num_edges = num_edges, message_dim = 32, next_state_dim = 32,
+            mults = utils_metrics.calculate_multiplications_new('gat_gcn_v2', feature_dim = 64, num_edges = num_edges, message_dim = 64, next_state_dim = 64,
                                                             message_layers = 5, reduced = False, k_reduced = 0,
-                                                            num_heads = 0, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'splitted')
+                                                            num_heads = 5, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'splitted')
             print("Number of Multiplications :" , mults)
 
 

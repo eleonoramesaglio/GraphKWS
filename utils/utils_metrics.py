@@ -121,483 +121,67 @@ def count_edges(adjacency_matrix):
 
 
 
-'''
-def splitted_multiplications_helper(nodes, initial_nodes_mfccs_layer_dims):
+def gatv2_single_head_mults(nodes, node_dim, per_head_channels):
     """
-    Calculate multiplications for the splitted MFCC processing mode.
+    Count scalar multiplications for a single-head GATv2 block ; this is according
+    to how we present it in our paper.
+
+
+    We only count : 
+    - Only scalar multiplications.
+    - Additions, bias adds, broadcast, ReLU/softmax/exponentials/divisions are NOT counted.
+
+    
+    A breakdown based on the figure in our paper : 
+    A_C: Context × Q 
+         - Multiply the context node feature (1 × node_dim) by Q (node_dim × per_head_channels).
+         - Multiplications = node_dim * per_head_channels.
+
+    A_N: All nodes × V
+         - Multiply every node feature (nodes × node_dim) by V (node_dim × per_head_channels).
+         - Multiplications = nodes * node_dim * per_head_channels.
+
+    B:   Sum + ReLU
+         - q_c (broadcast) + v_j for each node, then ReLU.
+         - Multiplications = 0 (adds/activation only).
+
+    C:   Dense to score + softmax
+         - For each node, map the per_head_channels vector to a scalar with a weight
+           vector a (per_head_channels × 1). Dot product per node costs per_head_channels mults.
+         - Multiplications = nodes * per_head_channels.
+
+    D:   Apply attention weight
+         - Scale each node's value vector (per_head_channels) by its scalar weight.
+         - Multiplications = nodes * per_head_channels.
+
+    E:   Sum to get the head output (1 × per_head_channels)
+         - Adds only → Multiplications = 0.
+
+    Total = A_C + A_N + C + D
+          = node_dim * per_head_channels 
+            + nodes * node_dim * per_head_channels 
+            + 2 * nodes * per_head_channels
+          = per_head_channels * (node_dim * (nodes + 1) + 2 * nodes)
     """
-    
-    # Feature dimensions for each component (fixed)
-    base_mfccs_dim = 12      # features[:, 0:12]
-    delta_mfccs_dim = 12     # features[:, 12:24] 
-    delta_delta_mfccs_dim = 12  # features[:, 24:36]
-    energy_features_dim = 3   # features[:, 36:39]
-    
-    # Output dimensions for each dense_inner processing (fixed)
-    base_output_dim = 24
-    delta_output_dim = 24
-    delta_delta_output_dim = 24
-    energy_output_dim = 8
-    
-    # Calculate multiplications for each processing branch
-    # Each dense_inner contains: Dense layer + Dropout + LayerNorm
-    # Only Dense layer contributes to multiplications
-    
-    base_mult = nodes * base_mfccs_dim * base_output_dim
-    delta_mult = nodes * delta_mfccs_dim * delta_output_dim  
-    delta_delta_mult = nodes * delta_delta_mfccs_dim * delta_delta_output_dim
-    energy_mult = nodes * energy_features_dim * energy_output_dim
-    
-    # Combined features dimension after concatenation
-    combined_dim = base_output_dim + delta_output_dim + delta_delta_output_dim + energy_output_dim
-    # combined_dim = 24 + 24 + 24 + 8 = 80
-    
-    # Final dense_inner processing
-    final_mult = nodes * combined_dim * initial_nodes_mfccs_layer_dims
-    
-    # Total multiplications
-    total_mult = base_mult + delta_mult + delta_delta_mult + energy_mult + final_mult
-
-    return total_mult
-
-
-
-def calculate_multiplications(mode, feature_dim, num_edges, message_dim, next_state_dim, message_layers,
-                              reduced = False, k_reduced = 0,
-                              num_heads = 2, per_head_channels = 128, use_layer_normalization = True, init_node_enc = 'normal'):
-    """
-    Calculate the number of multiplications for a given model per sample
-
-    Args:
-        mode (str): The model mode, one of 'gnn', 'gnn_weighted_context', 'gnn_weighted', 'base_gcn', 'gat_v2', 'gat_gcn', 'gat_gcn_v2' or 'gcn'.
-        feature_dim (int): The dimension of the node features.
-        num_edges (int): The number of edges in the graph.
-        message_dim (int): The dimension of the messages.
-        next_state_dim (int): The dimension of the next state.
-        message_layers (int): The number of message passing layers.
-        reduced (bool): Whether to use reduced nodes (default: False).
-        k_reduced (int): The reduction factor for nodes if reduced is True (default: 0).
-        num_heads (int): Number of attention heads for GAT models (default: 2).
-        per_head_channels (int): Number of channels per attention head for GAT models (default: 128).
-        use_layer_normalization (bool): Whether to use layer normalization in the model (default: True).
-        init_node_enc (str): Initial node encoding method, either 'normal' or 'splitted' (default: 'normal').
-    Returns:
-        int: The total number of multiplications for the model per sample.
-
-    """
-    num_multiplications = 0
-    num_classes = 35
-    mfccs = 39
-    if reduced:
-        nodes = math.ceil(98/k_reduced)
-    else:
-        nodes = 98
-
-
-    if mode == 'gnn':
-
-        # 1. Initial state encoding:
-
-        if init_node_enc == 'normal':
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            num_multiplications = nodes * mfccs * feature_dim
-        
-        else: # splitted mode 
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            # and then we apply a dropout and layer normalization
-            num_multiplications = splitted_multiplications_helper(nodes, feature_dim)
-
-        # 2. Message passing
-        for i in range(message_layers):
-            # In the first iteration, we have as many features as our initial encoding of the node features
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                # Afte the first iteration, it has next_state_dim many features
-                node_dim = next_state_dim
-
-            # 2a. GNN SimpleConv
-            # - Aggregation of the messages from the neighboring nodes (no multiplications)
-            # - Dense layer inside SimpleConv from node_dim to message dim, for each node
-            gnn_conv_multiplications = nodes * node_dim * message_dim
-
-            # 2b. Next state computation
-            # - Without layer normalization            
-            if not use_layer_normalization:
-                next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-            # - With layer normalization (+ 3 * next_state_dim for each node)
-            else:
-                next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-
-            num_multiplications += gnn_conv_multiplications + next_state_multiplications
-
-        # 3. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += logits_multiplications
-
-
-    elif mode == 'gnn_weighted_context':
-
-        if init_node_enc == 'normal':
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            num_multiplications = nodes * mfccs * feature_dim
-        
-        else: # splitted mode 
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            # and then we apply a dropout and layer normalization
-            num_multiplications = splitted_multiplications_helper(nodes, feature_dim)
-
-        # 2. Message passing
-        for i in range(message_layers):
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                node_dim = next_state_dim
-
-            # 2a. GNN WeightedConv using the formula: |E| × node_dim (edge weigths application) + |V| × node_dim × message_dim (dense transformation after pooling)
-            gnn_conv_multiplications = num_edges * node_dim + nodes * node_dim * message_dim
-
-            # 2b. Next state computation
-            # - Without layer normalization
-            if not use_layer_normalization:
-                next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-            # - With layer normalization
-            else:
-                next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-
-            num_multiplications += gnn_conv_multiplications + next_state_multiplications
-
-        # Context node update : Uses Next State From Concat, i.e. concatenates current context node representation (dimension : next_state_dim, since the nodes
-        # were already updated) with the pooled messages from all nodes (dimension : next_state_dim (initialized as such))
-        # and puts it into a dense layer that maps it to next_state_dim
-        context_node_multiplications = (next_state_dim + next_state_dim) * next_state_dim
-        num_multiplications += context_node_multiplications
-
-
-        # 3. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += logits_multiplications
-
-
-
-    elif mode == 'gnn_weighted':
-
-        if init_node_enc == 'normal':
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            num_multiplications = nodes * mfccs * feature_dim
-        
-        else: # splitted mode 
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            # and then we apply a dropout and layer normalization
-            num_multiplications = splitted_multiplications_helper(nodes, feature_dim)
-
-        # 2. Message passing
-        for i in range(message_layers):
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                node_dim = next_state_dim
-
-            # 2a. GNN WeightedConv using the formula: |E| × node_dim (edge weigths application) + |V| × node_dim × message_dim (dense transformation after pooling)
-            gnn_conv_multiplications = num_edges * node_dim + nodes * node_dim * message_dim
-
-            # 2b. Next state computation
-            # - Without layer normalization
-            if not use_layer_normalization:
-                next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-            # - With layer normalization
-            else:
-                next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-
-            num_multiplications += gnn_conv_multiplications + next_state_multiplications
-
-        # 3. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += logits_multiplications
-
-        
-    elif mode == 'base_gcn':
-        # Note: This mode computes the number of multiplications for both base_gnn_model_using_gcn and base_gnn_model_using_gcn_with_residual_blocks.
-        #       Indeed, the residual connection is just an addition, so it does not contribute to the number of multiplications.
-        if init_node_enc == 'normal':
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            num_multiplications = nodes * mfccs * feature_dim
-        
-        else: # splitted mode 
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            # and then we apply a dropout and layer normalization
-            num_multiplications = splitted_multiplications_helper(nodes, feature_dim)
-        
-        # 2. Message passing
-        for i in range(message_layers):
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                node_dim = next_state_dim
-
-            # 2a. GCN convolution using the formula: |E| × node_dim + |V| + |V| × node_dim × message_dim
-            # - Message passing step: |E| × node_dim 
-            # - Normalization step: |V| (multiplying each node for 1/degree(node))
-            # - Dense transformation step: |V| × node_dim × message_dim
-            gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
-
-            # 2b. Next state computation
-            # - Without layer normalization
-           # if not use_layer_normalization:
-           # GCN block doesn't use any layer normalization
-            next_state_multiplications = (node_dim + message_dim) * next_state_dim * nodes
-            # - With layer normalization
-           # else:
-           #     next_state_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-
-            num_multiplications += gcn_conv_multiplications + next_state_multiplications
-
-        # 3. Mean pooling
-        pooling_multiplications = next_state_dim
-
-        # 4. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += pooling_multiplications + logits_multiplications
-
-
-    elif mode == 'gat_v2':
-
-        # 1. Initial state encoding
-        # 1a. Conv1D: we apply a 1D convolution to the input features (mfccs) to get the initial node features (16 filters of size 3)
-        conv1D_multiplications = nodes * mfccs * 16 * 3
-        # 1b. Dense: from the conv1D output to the feature_dim embedding
-        dense_multiplications = nodes * (mfccs * 16) * feature_dim
-        num_multiplications = conv1D_multiplications + dense_multiplications
-        # 1c. Context node (empty) initialization
-        context_dim = next_state_dim
-
-        # 2. Message passing
-        for i in range(message_layers):
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                node_dim = next_state_dim
-
-            # 2a. GNN WeightedConv for nodes updates
-            gnn_conv_multiplications = num_edges * node_dim + nodes * node_dim * message_dim
-
-            # 2b. GAT v2 convolution to context node:
-            # We are calculating the attention scores between all our nodes and the context node. 
-
-            # a) Linear transformations: Query, Key and Value matrices (Q, K, W)
-            #    QUERY: Generated from the single target token () - "What information do I need?"
-            #    -> Query transformation for context node: 1 × node_dim × per_head_channels × num_heads
-            #    KEY: Generated from all source tokens () - "What information can we provide?"
-            #    -> Key transformation for frame nodes: |V| × node_dim × per_head_channels × num_heads
-            #    VALUE: Generated from all source tokens () - "Here's our actual information"
-            #    -> Value transformation for frame nodes:  |V| × node_dim × per_head_channels × num_heads
-            #    
-            #    Q : 1 × per_head_channels
-            #    K : |V| × per_head_channels
-            #    W : |V| × per_head_channels
-
-            # Overall (2|V|+1)* node_dim × per_head_channels × num_heads
-            linear_multiplications = (2 * nodes + 1) * node_dim * per_head_channels * num_heads
-
-            # b) Attention scores computation and application
-            # - Computation (C = Q × K^T for each head): |V| × per_head_channels × num_heads
-            # - Application (C × W for each head): |V| × per_head_channels × num_heads
-
-            # Overall 2 * |V| × per_head_channels × num_heads
-            attention_multiplications = 2 * nodes * per_head_channels * num_heads
-
-            gat_conv_multiplications = linear_multiplications + attention_multiplications
-
-            # 2c. Next state computation:
-            # - Without layer normalization
-            if not use_layer_normalization:
-                # Nodes:
-                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-                # Context node: concatenates the heads result (num_heads * per_head channels) to the node features and then applies a dense layer
-                next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim
-            # - With layer normalization
-            else:
-                # Nodes:
-                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-                # Context node:
-                next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim + 3 * next_state_dim
-
-            num_multiplications += gnn_conv_multiplications + gat_conv_multiplications + next_state_node_multiplications + next_state_context_multiplications
-
-        # 3. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += logits_multiplications
-
-
-    elif mode == 'gat_gcn':
-        # gat_gcn updates the context node (with GAT v2) after each message passing layer
-        if init_node_enc == 'normal':
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            num_multiplications = nodes * mfccs * feature_dim
-        
-        else: # splitted mode 
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            # and then we apply a dropout and layer normalization
-            num_multiplications = splitted_multiplications_helper(nodes, feature_dim)
-        context_dim = next_state_dim
-
-        # 2. Message passing
-        for i in range(message_layers):
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                node_dim = next_state_dim
-
-            # 2a. GCN convolution using the formula: |E| × node_dim + |V| + |V| × node_dim × message_dim
-            gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
-
-            # 2b. GAT v2 convolution to context node:
-            # Linear transformations
-            linear_multiplications = (2 * nodes + 1) * node_dim * per_head_channels * num_heads
-            # Attention computation and application
-            attention_multiplications = 2 * nodes * per_head_channels * num_heads
-            gat_conv_multiplications = linear_multiplications + attention_multiplications
-
-            # 2c. Next state computation
-            # - Without layer normalization
-            if not use_layer_normalization:
-                # Nodes:
-                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-                # Context node:
-                next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim
-            # - With layer normalization
-            else:
-                # Nodes:
-                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-                # Context node:
-                next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim + 3 * next_state_dim
-
-            num_multiplications += gcn_conv_multiplications + gat_conv_multiplications + next_state_node_multiplications + next_state_context_multiplications
-
-        # 3. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += logits_multiplications
-
-
-    elif mode == 'gat_gcn_v2':
-        # gat_gcn_v2 only updates the context node (with GAT v2) AFTER all the message passing layers (so always just once)
-        # -> less parameters & multiplications compared to the gat_gcn model
-        # 1. Initial state encoding
-        if init_node_enc == 'normal':
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            num_multiplications = nodes * mfccs * feature_dim
-        
-        else: # splitted mode 
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            # and then we apply a dropout and layer normalization
-            num_multiplications = splitted_multiplications_helper(nodes, feature_dim)
-
-        context_dim = next_state_dim
-
-        # 2. Message passing
-        for i in range(message_layers):
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                node_dim = next_state_dim
-                
-            # 2a. GCN convolution using the formula: |E| × node_dim + |V| + |V| × node_dim × message_dim
-            gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
-
-            # 2b. Next state computation for nodes
-            # - Without layer normalization
-            if not use_layer_normalization:
-                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-            # - With layer normalization
-            else:
-                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-
-            num_multiplications += gcn_conv_multiplications + next_state_node_multiplications
-
-        # 3. GAT v2 convolution to context node:
-        # Linear transformations
-        linear_multiplications = (2 * nodes + 1) * node_dim * per_head_channels * num_heads
-        # Attention computation and application
-        attention_multiplications = 2 * nodes * per_head_channels * num_heads
-        gat_conv_multiplications = linear_multiplications + attention_multiplications
-
-        # 4. Next state computation for context node:
-        # - Without layer normalization
-        if not use_layer_normalization:
-            next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim
-        # - With layer normalization (+ 3 * next_state_dim for each node)
-        else:
-            next_state_context_multiplications = (context_dim + num_heads * per_head_channels) * next_state_dim + 3 * next_state_dim
-
-        num_multiplications += gat_conv_multiplications + next_state_context_multiplications
-
-        # 5. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += logits_multiplications
-
-
-    elif mode == 'gcn':
-        # gcn updates the context node after each message passing layer by mean pooling the node features and sending them to the context node.
-        # This is similar to gat_gcn, but without the attention mechanism (therefore with less parameters and multiplications).
-        if init_node_enc == 'normal':
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            num_multiplications = nodes * mfccs * feature_dim
-        
-        else: # splitted mode 
-            # For each node, we encode the features using a dense layer that maps from mfccs to feature_dim
-            # and then we apply a dropout and layer normalization
-            num_multiplications = splitted_multiplications_helper(nodes, feature_dim)
-        context_dim = next_state_dim
-
-        # 2. Message passing
-        for i in range(message_layers):
-            if i == 0:
-                node_dim = feature_dim
-            else:
-                node_dim = next_state_dim
-            
-            # 2a. GCN convolution using the formula: |E| × node_dim + |V| + |V| × node_dim × message_dim
-            gcn_conv_multiplications = num_edges * node_dim + nodes + nodes * node_dim * message_dim
-
-            # 2b. Context node update with mean pooling
-            context_pooling_multiplications = next_state_dim
-
-            # 2c. Next state computation
-            # - Without layer normalization
-            if not use_layer_normalization:
-                # Nodes:
-                next_state_node_multiplications = nodes * (node_dim + message_dim) * next_state_dim
-                # Context node:
-                next_state_context_multiplications = (context_dim + next_state_dim) * next_state_dim   # concatenates current context + pooled nodes
-            # - With layer normalization
-            else:
-                # Nodes:
-                next_state_node_multiplications = nodes * ((node_dim + message_dim) * next_state_dim + 3 * next_state_dim)
-                # Context node:
-                next_state_context_multiplications = (context_dim + next_state_dim) * next_state_dim + 3 * next_state_dim
-
-            num_multiplications += gcn_conv_multiplications + context_pooling_multiplications + next_state_node_multiplications + next_state_context_multiplications
-
-        # 3. Logits
-        logits_multiplications = next_state_dim * num_classes
-        num_multiplications += logits_multiplications
-
-
-    else:
-        raise ValueError(f"Unknown mode: {mode}. Supported modes are 'gnn', 'gnn_weighted', 'base_gcn', 'gat_v2', 'gat_gcn', 'gat_gcn_v2' and 'gcn'.")
-
-        
-    return num_multiplications
-
-'''
-
-
-
-
-
-
-
-
+    N, F_in, F_h = nodes, node_dim, per_head_channels
+
+    A_C = F_in * F_h
+    A_N = N * F_in * F_h
+    B   = 0
+    C   = N * F_h                 # dense-to-score
+    D   = N * F_h                 # apply attention weight
+    E   = 0
+
+    breakdown = {
+        "A_C: context × Q": A_C,
+        "A_N: nodes × V": A_N,
+        "B: sum + ReLU": B,
+        "C: dense-to-score (·a)": C,
+        "D: weight × value": D,
+        "E: final sum": E,
+    }
+    total = sum(breakdown.values())
+    return total
 
 
 
@@ -819,11 +403,13 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
 
             # 2a) GCN convolution:
             #   - Message passing:        |E| × node_dim
-            #   - Degree normalization:   |V|
+            #   - Degree normalization (receiver node):   |V|
+            #   - Degree Normalization (sender nodes) : 2* |E| (2x since messages are sent in both directions of the edge)
             #   - Dense after agg:        |V| × node_dim × message_dim
             # (No LayerNorm here by design,i.e. in tensorflow GCN block we couldn't add it (not a hyperparameter))
             gcn_conv_multiplications = (
                 num_edges * node_dim
+                + 2 * num_edges
                 + nodes
                 + nodes * node_dim * message_dim
             )
@@ -843,7 +429,7 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += pooling_multiplications + logits_multiplications
 
-    # NOT USED
+    # NOT USED ; OUTDATED!!
     elif mode == 'gat_v2':
 
         # 1. Initial state encoding
@@ -868,24 +454,15 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
             # 2b. GAT v2 convolution to context node:
             # We are calculating the attention scores between all our nodes and the context node. 
 
-            # a) Linear transformations: Query, Key and Value matrices (Q, K, W)
-            #    QUERY: Generated from the single target token () - "What information do I need?"
-            #    -> Query transformation for context node: 1 × node_dim × per_head_channels × num_heads
-            #    KEY: Generated from all source tokens () - "What information can we provide?"
-            #    -> Key transformation for frame nodes: |V| × node_dim × per_head_channels × num_heads
-            #    VALUE: Generated from all source tokens () - "Here's our actual information"
-            #    -> Value transformation for frame nodes:  |V| × node_dim × per_head_channels × num_heads
+            # a) We only have a query and value matrix in GATv2 (no key matrix)
             #    
             #    Q : 1 × per_head_channels
-            #    K : |V| × per_head_channels
             #    W : |V| × per_head_channels
 
             # Overall (2|V|+1)* node_dim × per_head_channels × num_heads
             linear_multiplications = (2 * nodes + 1) * node_dim * per_head_channels * num_heads
 
             # b) Attention scores computation and application
-            # - Computation (C = Q × K^T for each head): |V| × per_head_channels × num_heads
-            # - Application (C × W for each head): |V| × per_head_channels × num_heads
 
             # Overall 2 * |V| × per_head_channels × num_heads
             attention_multiplications = 2 * nodes * per_head_channels * num_heads
@@ -989,11 +566,13 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
 
             # 2a) GCN convolution:
             #   - Message passing:        |E| × node_dim
-            #   - Degree normalization:   |V|
+            #   - Degree normalization (receiver node):   |V|
+            #   - Degree Normalization (sender nodes) : 2 * |E| (2x since messages are sent in both directions of the edge) 
             #   - Dense after agg:        |V| × node_dim × message_dim
-            # (NO LayerNorm here by design)
+            # (No LayerNorm here by design,i.e. in tensorflow GCN block we couldn't add it (not a hyperparameter))
             gcn_conv_multiplications = (
                 num_edges * node_dim
+                + 2 * num_edges 
                 + nodes
                 + nodes * node_dim * message_dim
             )
@@ -1007,13 +586,10 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
             num_multiplications += gcn_conv_multiplications + next_state_node_multiplications
 
         # 3) GAT v2 convolution to the context node (applied once after all layers):
-        # Linear transformations
-        #   - For all nodes and the single context: (2*nodes + 1) * node_dim * per_head_channels * num_heads
-        linear_multiplications = (2 * nodes + 1) * node_dim * per_head_channels * num_heads
-        # Attention computation and application
-        attention_multiplications = 2 * nodes * per_head_channels * num_heads
-        gat_conv_multiplications = linear_multiplications + attention_multiplications
+        gat_conv_multiplications = gatv2_single_head_mults(nodes, node_dim, per_head_channels)
 
+        # Then for each head : 
+        gat_conv_multiplications *= num_heads
 
         # 4) Next state for context node: Dense (+ optional LN)
         if not use_layer_normalization:
@@ -1221,7 +797,7 @@ def visualize_reduced_nodes_effect():
             'reduced_nodes': [0, 2, 4],
             'accuracies': [85.83, 84.94, 81.71],
             'std_devs': [0.70, 0.45, 0.38],
-            'multiplies': ['1.748M', '906k', '493k']
+            'multiplies': ['1.752M', '910k', '497k']
         },
         {
             'name': 'Best GNN (64 dim)',
@@ -1237,7 +813,7 @@ def visualize_reduced_nodes_effect():
             'reduced_nodes': [0, 2, 4],
             'accuracies': [94.58, 94.08, 92.99],
             'std_devs': [0.11, 0.15, 0.13],
-            'multiplies': ['15.114M', '7.664M', '4.015M']
+            'multiplies': ['11.104M', '5.661M', '2.995M']
         }
     ]
 
