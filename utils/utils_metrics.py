@@ -148,7 +148,7 @@ def gatv2_single_head_mults(nodes, node_dim, per_head_channels):
     C:   Dense to score + softmax
          - For each node, map the per_head_channels vector to a scalar with a weight
            vector a (per_head_channels × 1). Dot product per node costs per_head_channels mults.
-         - Multiplications = nodes * per_head_channels.
+         - Multiplications = nodes * per_head_channels * 1.
 
     D:   Apply attention weight
          - Scale each node's value vector (per_head_channels) by its scalar weight.
@@ -289,7 +289,7 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
         num_multiplications += logits_multiplications
 
 
-    # NOT USED 
+    # NOT USED ; OUTDATED POSSIBLY
     elif mode == 'gnn_weighted_context':
 
         if init_node_enc == 'normal':
@@ -404,12 +404,12 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
             # 2a) GCN convolution:
             #   - Message passing:        |E| × node_dim
             #   - Degree normalization (receiver node):   |V|
-            #   - Degree Normalization (sender nodes) : 2* |E| (2x since messages are sent in both directions of the edge)
+            #   - Degree Normalization (sender nodes) : |E| 
             #   - Dense after agg:        |V| × node_dim × message_dim
             # (No LayerNorm here by design,i.e. in tensorflow GCN block we couldn't add it (not a hyperparameter))
             gcn_conv_multiplications = (
                 num_edges * node_dim
-                + 2 * num_edges
+                + num_edges
                 + nodes
                 + nodes * node_dim * message_dim
             )
@@ -429,7 +429,7 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += pooling_multiplications + logits_multiplications
 
-    # NOT USED ; OUTDATED!!
+    # NOT USED ; OUTDATED! 
     elif mode == 'gat_v2':
 
         # 1. Initial state encoding
@@ -489,7 +489,7 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += logits_multiplications
 
-    # NOT USED
+    # NOT USED, OUTDATED !
     elif mode == 'gat_gcn':
         # gat_gcn updates the context node (with GAT v2) after each message passing layer
         if init_node_enc == 'normal':
@@ -567,12 +567,12 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
             # 2a) GCN convolution:
             #   - Message passing:        |E| × node_dim
             #   - Degree normalization (receiver node):   |V|
-            #   - Degree Normalization (sender nodes) : 2 * |E| (2x since messages are sent in both directions of the edge) 
+            #   - Degree Normalization (sender nodes) : |E|
             #   - Dense after agg:        |V| × node_dim × message_dim
             # (No LayerNorm here by design,i.e. in tensorflow GCN block we couldn't add it (not a hyperparameter))
             gcn_conv_multiplications = (
                 num_edges * node_dim
-                + 2 * num_edges 
+                + num_edges 
                 + nodes
                 + nodes * node_dim * message_dim
             )
@@ -606,7 +606,7 @@ def calculate_multiplications_new(mode, feature_dim, num_edges, message_dim, nex
         logits_multiplications = next_state_dim * num_classes
         num_multiplications += logits_multiplications
 
-    # NOT USED
+    # NOT USED, POSSIBLY OUTDATED!
     elif mode == 'gcn':
         # gcn updates the context node after each message passing layer by mean pooling the node features and sending them to the context node.
         # This is similar to gat_gcn, but without the attention mechanism (therefore with less parameters and multiplications).
@@ -797,7 +797,7 @@ def visualize_reduced_nodes_effect():
             'reduced_nodes': [0, 2, 4],
             'accuracies': [85.83, 84.94, 81.71],
             'std_devs': [0.70, 0.45, 0.38],
-            'multiplies': ['1.752M', '910k', '497k']
+            'multiplies': ['1.750M', '908k', '495k']
         },
         {
             'name': 'Best GNN (64 dim)',
@@ -813,7 +813,7 @@ def visualize_reduced_nodes_effect():
             'reduced_nodes': [0, 2, 4],
             'accuracies': [94.58, 94.08, 92.99],
             'std_devs': [0.11, 0.15, 0.13],
-            'multiplies': ['11.104M', '5.661M', '2.995M']
+            'multiplies': ['11.102M', '5.659M', '2.993M']
         }
     ]
 
