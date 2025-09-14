@@ -368,7 +368,7 @@ def main():
                                             l2_reg_factor= 1e-4,
                                             )
                 
-            if i == 1:
+            if i == 0:
                 base_model = base_gnn.GAT_GCN_model_v2(graph_tensor_specification = graphs_spec,
                                                               n_message_passing_layers = 5,
                                                               use_residual_next_state = True,
