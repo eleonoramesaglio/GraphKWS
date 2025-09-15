@@ -34,7 +34,7 @@ def main():
     # This loop might look weird, but it is just such that we can change a single number below in the models to test different models (i.e. i == 0)
     for i in range(1):
         # Set to true if the model is to be trained
-        TRAINING = True
+        TRAINING = False
 
 
         # Set the mode of the model (i.e. CNN or GNN)
@@ -207,9 +207,9 @@ def main():
 
 
 
-            mults = utils_metrics.calculate_multiplications_new('gat_gcn_v2', feature_dim = 64, num_edges = num_edges, message_dim = 64, next_state_dim = 64,
+            mults = utils_metrics.calculate_multiplications_new('gnn', feature_dim = 64, num_edges = num_edges, message_dim = 64, next_state_dim = 64,
                                                             message_layers = 5, reduced = False, k_reduced = 0,
-                                                            num_heads = 5, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'splitted')
+                                                            num_heads = 0, per_head_channels=128, use_layer_normalization=True, init_node_enc = 'normal')
             print("Number of Multiplications :" , mults)
 
 
@@ -271,7 +271,7 @@ def main():
                                           initial_state_mfcc_mode = 'normal',
                                           )
                 
-            if i == 0:
+            if i == 1:
                 base_model = base_gnn.base_gnn_weighted_model(
                                           graph_tensor_specification = graphs_spec,
                                           initial_nodes_mfccs_layer_dims = 32,
