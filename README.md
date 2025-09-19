@@ -49,14 +49,3 @@ To our knowledge, this is the **first work applying GNNs to keyword spotting**, 
 | **GAT-GCN (ours)**   | 151k   | 11.1M      | **94.68**    |
 
 ---
-
-## 📚 Citation  
-
-If you find this work useful, please cite our paper:  
-
-```bibtex
-@article{mesaglio2025graphkws,
-  title   = {GraphKWS: Exploring Graph Neural Networks for Keyword Spotting},
-  author  = {Mesaglio, Eleonora and Helbing, Marlon Joshua},
-  year    = {2025}
-}
