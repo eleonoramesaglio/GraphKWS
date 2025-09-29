@@ -6,7 +6,6 @@ This repository contains the code accompanying the paper:
 **GraphKWS: Exploring Graph Neural Networks for Keyword Spotting**  
 *Eleonora Mesaglio, Marlon Joshua Helbing*  
 
----
 
 ## 📖 Overview  
 
@@ -24,7 +23,6 @@ Our models achieve:
 
 To our knowledge, this is the **first work applying GNNs to keyword spotting**, demonstrating their potential as lightweight and scalable alternatives to CNN-based models.  
 
----
 
 ## 🚀 Features  
 
@@ -37,7 +35,6 @@ To our knowledge, this is the **first work applying GNNs to keyword spotting**, 
   - **GAT-GCN** (attention-based, medium-footprint)  
 - Benchmarking on the **Google Speech Commands Dataset V2**.  
 
----
 
 ## 📈 Results  
 
